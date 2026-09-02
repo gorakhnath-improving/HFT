@@ -22,6 +22,10 @@ import com.finex.eventlog.EventStore;
 import com.finex.eventlog.InMemoryEventStore;
 import com.finex.eventlog.ReplayEngine;
 import com.finex.eventlog.SubmitOrderCommand;
+import com.finex.ledger.DebitCredit;
+import com.finex.ledger.InMemoryLedger;
+import com.finex.ledger.Ledger;
+import com.finex.ledger.LedgerEntry;
 import com.finex.marketdata.BookUpdate;
 import com.finex.marketdata.BookUpdateFactory;
 import com.finex.marketdata.ExecutionEvent;
@@ -54,6 +58,9 @@ import com.finex.shard.ShardCoordinator;
  *
  * <p>Phase 10 adds symbol sharding via {@link ShardCoordinator} so independent symbols can
  * be processed by independent {@link EngineShard}s.
+ *
+ * <p>Phase 11 adds a double-entry {@link Ledger} that posts balanced cash and asset entries
+ * for every trade.
  */
 @Service
 public class OrderService implements CommandHandler {
@@ -71,6 +78,7 @@ public class OrderService implements CommandHandler {
 
     private final MarketDataPublisher publisher = new SimpleMarketDataPublisher();
     private final EventStore eventStore;
+    private final Ledger ledger = new InMemoryLedger();
 
     public OrderService() {
         this(new InMemoryEventStore(), 1);
@@ -142,6 +150,7 @@ public class OrderService implements CommandHandler {
         for (Trade trade : result.trades()) {
             lastTradePrices.put(command.symbol(), trade.price());
             applyTradeToRiskState(trade);
+            postTradeToLedger(trade, now);
         }
         publishMatchEvents(command.symbol(), shard, result, now);
         publishBookUpdate(command.symbol(), shard, now);
@@ -225,6 +234,13 @@ public class OrderService implements CommandHandler {
     }
 
     /**
+     * Exposes the double-entry ledger.
+     */
+    public Ledger ledger() {
+        return ledger;
+    }
+
+    /**
      * Replays all events from the event store into this service.
      */
     public void replay() {
@@ -241,6 +257,38 @@ public class OrderService implements CommandHandler {
         AccountRiskState seller = riskState(trade.sellerAccountId());
         riskEngine.onTrade(buyer, trade.buyOrderId(), trade, Side.BUY);
         riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
+    }
+
+    private void postTradeToLedger(Trade trade, Instant now) {
+        BigDecimal notional = trade.price().multiply(trade.quantity());
+        String assetBuyer = assetAccount(trade.buyerAccountId(), trade.symbol());
+        String cashBuyer = cashAccount(trade.buyerAccountId());
+        String assetSeller = assetAccount(trade.sellerAccountId(), trade.symbol());
+        String cashSeller = cashAccount(trade.sellerAccountId());
+        String cashCurrency = "USD";
+        String assetCurrency = trade.symbol();
+
+        // Cash leg: buyer pays cash (credit), seller receives cash (debit).
+        ledger.post(List.of(
+                new LedgerEntry(0, now, cashSeller, notional, DebitCredit.DEBIT, cashCurrency,
+                        "Trade " + trade.tradeId() + " cash received"),
+                new LedgerEntry(0, now, cashBuyer, notional, DebitCredit.CREDIT, cashCurrency,
+                        "Trade " + trade.tradeId() + " cash paid")));
+
+        // Asset leg: buyer receives asset (debit), seller delivers asset (credit).
+        ledger.post(List.of(
+                new LedgerEntry(0, now, assetBuyer, trade.quantity(), DebitCredit.DEBIT, assetCurrency,
+                        "Trade " + trade.tradeId() + " asset received"),
+                new LedgerEntry(0, now, assetSeller, trade.quantity(), DebitCredit.CREDIT, assetCurrency,
+                        "Trade " + trade.tradeId() + " asset delivered")));
+    }
+
+    private static String cashAccount(long accountId) {
+        return "CASH." + accountId;
+    }
+
+    private static String assetAccount(long accountId, String symbol) {
+        return "ASSET." + symbol + "." + accountId;
     }
 
     private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {

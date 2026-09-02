@@ -6,9 +6,10 @@ demonstrate both **FinTech correctness** (ledger, risk, clearing, settlement, au
 profiling). Full scope and roadmap: [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (derived from
 [`../Master Plan.md`](../Master%20Plan.md)).
 
-> **Status:** Phase 6 — Risk Engine. Pre-trade risk checks (size, notional, collar,
-> position, exposure, rate limit) are enforced before an order reaches the matching engine.
-> See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and [`PROGRESS.md`]
+> **Status:** Phase 11 — Ledger completed (Phases 7-11 batch). Market-data events,
+> compact binary protocol, append-only event log with replay, symbol sharding, and a
+> double-entry ledger are now integrated. Pre-trade risk and deterministic matching remain in
+> place. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and [`PROGRESS.md`]
 > (PROGRESS.md) for the session log.
 
 ## Project layout
@@ -19,6 +20,11 @@ finex/
 ├── finex-order-book/      price-time-priority order book
 ├── finex-matching-engine/ deterministic matching engine
 ├── finex-risk/            pre-trade risk engine
+├── finex-market-data/     market-data events (book, trade, execution)
+├── finex-protocol/        compact binary trading protocol codec
+├── finex-event-log/       append-only command events and replay
+├── finex-shard/           symbol sharding and engine shards
+├── finex-ledger/          double-entry ledger
 ├── finex-api/             Spring Boot REST app (administrative/developer-facing, not the hot path)
 ├── docker/                config for containerized infra (prometheus, grafana)
 ├── docker-compose.yml     infra dependencies: postgres, prometheus, grafana
@@ -29,8 +35,7 @@ finex/
 └── DESIGN_DECISIONS.md  ADRs
 ```
 
-More modules (`finex-risk`, `finex-ledger`, `finex-market-data`, ...) are added as their
-phases begin.
+More modules may be added as later phases begin (e.g. `finex-portfolio`, `finex-clearing`).
 
 ## Prerequisites
 

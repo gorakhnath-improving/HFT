@@ -4,6 +4,53 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 7: Phases 7-11 — Market Data, Binary Protocol, Event Log, Sharding, Ledger
+
+**Phase:** 6 → 7 → 8 → 9 → 10 → 11 (done)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md`, `DESIGN_DECISIONS.md` for Phases 7-11.
+- **Phase 7 — Market Data:** Added `finex-market-data` module with `MarketDataEvent` sealed
+  hierarchy (`BookUpdate`, `TradeEvent`, `ExecutionEvent`), `PriceLevel`, `MarketDataPublisher`,
+  `MarketDataListener`, and `SimpleMarketDataPublisher`. `OrderService` publishes trade/book
+  events on every submit/cancel.
+- **Phase 8 — Binary Protocol:** Added `finex-protocol` module with `ProtocolMessage` records
+  and `BinaryCodec` using 4-byte length framing, single-byte enum ordinals, and UTF-8/BigDecimal
+  string payloads. Round-trip tests for all message types.
+- **Phase 9 — Event Architecture:** Added `finex-event-log` module with `Event`, `EventStore`,
+  `InMemoryEventStore`, `CommandSerializer`, `CommandHandler`, and `ReplayEngine`.
+  `OrderService` appends command events and is replayable; `OrderServiceReplayTest` verifies
+  state reconstruction.
+- **Phase 10 — Symbol Sharding:** Added `finex-shard` module with `SymbolShardRouter`,
+  `EngineShard`, and `ShardCoordinator`. `OrderService` routes symbols to shards. Fixed
+  `OrderService` order cache by extending `MatchResult` with `updatedOrders` populated by
+  `MatchingEngine`.
+- **Phase 11 — Ledger:** Added `finex-ledger` module with `Ledger`, `InMemoryLedger`,
+  `LedgerAccount`, `LedgerEntry`, `DebitCredit`, and `AccountType`. `OrderService` posts a
+  balanced cash leg and a balanced asset leg for every trade. `InMemoryLedger` enforces
+  `sum(debits) == sum(credits)` per posting.
+- Added `OrderServiceShardingTest`, `OrderServiceLedgerTest`, `SymbolShardRouterTest`,
+  `InMemoryLedgerTest`, and updated `OrderServiceReplayTest`.
+- Added ADR-006 (sharding) and ADR-007 (ledger) to `DESIGN_DECISIONS.md`.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS across all modules: `OrderControllerTest` (10),
+  `OrderServiceReplayTest`, `OrderServiceShardingTest`, `OrderServiceLedgerTest`,
+  `HealthControllerTest`, `MatchingEngineTest` (15), `OrderBookTest` (10), `InstrumentTest` (15),
+  `RiskEngineTest` (10), `MarketDataPublisherTest` (2), `BinaryCodecTest` (7),
+  `EventStoreTest` (2), `CommandSerializerTest` (2), `SymbolShardRouterTest` (3),
+  `InMemoryLedgerTest` (4).
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 11.
+- Start Phase 12 — Portfolio / P&L, Phase 13 — Clearing, Phase 14 — Settlement, or another
+  priority.
+
+---
+
 ## 2026-09-02 — Session 6: Phase 6 — Risk Engine
 
 **Phase:** 5 → 6 (done)

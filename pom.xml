@@ -28,6 +28,7 @@
         <module>finex-protocol</module>
         <module>finex-event-log</module>
         <module>finex-shard</module>
+        <module>finex-ledger</module>
         <module>finex-api</module>
     </modules>
 
@@ -78,6 +79,11 @@
             <dependency>
                 <groupId>com.finex</groupId>
                 <artifactId>finex-shard</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-ledger</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

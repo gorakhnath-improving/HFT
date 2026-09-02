@@ -234,3 +234,82 @@ without building a full ledger. The `RiskEngine` is deterministic and testable i
   `Trade` and cancel.
 - Default config and initial cash are hard-coded for the baseline; they will move to
   configuration/account profiles once the account service is built.
+
+---
+
+## ADR-006: Symbol sharding — static shard count with hash-based routing
+
+**Context:** Phase 10 requires multiple independent matching-engine shards so symbols can
+be processed concurrently as the system scales.
+
+**Options:**
+- One `MatchingEngine` per symbol, all running on a single thread: simple but no parallelism.
+- Assign symbols to a fixed number of `EngineShard` instances using `hashCode` modulo: easy to
+  implement, deterministic, and scales horizontally by shard count; changing shard count
+  reshuffles symbols.
+- Consistent hashing with virtual nodes: better redistribution when shard count changes, but
+  more complex and premature for a single-node baseline.
+- Thread-per-shard with work queues: needed for true parallelism but is Phase 25 (concurrency
+  model); we want the routing abstraction now without committing to an executor design.
+
+**Decision:** Introduce `finex-shard` with `SymbolShardRouter`, `EngineShard`, and
+`ShardCoordinator`. Each `EngineShard` owns per-symbol `MatchingEngine` instances.
+`OrderService` routes a command to `coordinator.shardFor(symbol)` and invokes the shard.
+The default shard count is `1`; tests and future config can raise it without changing the
+service code.
+
+**Reason:** This gives a clean routing boundary that can later be backed by a thread pool,
+process, or host per shard. Deterministic hash routing is sufficient for the baseline and
+keeps shard placement testable.
+
+**Tradeoffs:**
+- Re-sharding when `shardCount` changes requires replaying events; this is acceptable for a
+  single-node baseline.
+- `EngineShard` is still called on the caller's thread; concurrency is an explicit future phase.
+- Cross-symbol aggregation (e.g. account cash across shards) remains global in `OrderService`.
+
+**Consequences:**
+- `finex-shard` is a dependency of `finex-api`.
+- `OrderService` no longer holds a `Map<String, MatchingEngine>` directly; it delegates to
+  `ShardCoordinator`.
+- `OrderService` exposes `replay()` and `eventStore()` to support replay across shards.
+- `MatchingEngine` returns `MatchResult.updatedOrders` so `OrderService` can keep its order
+  cache correct regardless of which shard produced a fill.
+
+---
+
+## ADR-007: Ledger — in-memory double-entry postings per trade
+
+**Context:** Phase 11 requires a double-entry ledger with immutable entries and an invariant
+that debits equal credits for every posting.
+
+**Options:**
+- Build a full general ledger with chart of accounts, journals, and ledgers: overkill for the
+  baseline and duplicates future clearing/settlement phases.
+- Post simple, balanced entries for each trade leg: one cash posting and one asset posting
+  per trade, each with a debit and a credit. This satisfies the double-entry invariant, is
+  easy to test, and integrates cleanly with `OrderService`.
+- Wait for a dedicated settlement/clearing service: would delay the ledger and leave the
+  system without a baseline accounting record.
+
+**Decision:** Add `finex-ledger` with `Ledger`, `InMemoryLedger`, `LedgerAccount`, `LedgerEntry`,
+and `DebitCredit`. `OrderService` posts a cash leg (seller debit cash, buyer credit cash) and
+an asset leg (buyer debit asset, seller credit asset) for every `Trade`.
+
+**Reason:** This is the smallest design that satisfies the double-entry invariant and gives
+future Portfolio / P&L (Phase 12) and Clearing (Phase 13) a concrete ledger to query. Keeping
+it in memory matches the current baseline; persistence will be added when settlement matures.
+
+**Tradeoffs:**
+- Ledger state is not replayed from the event log yet; replay reconstructs matching and risk,
+  not ledger. A future ledger event log can be added when needed.
+- Asset postings use the symbol as the currency/unit (e.g. `BTC-USD` quantity), while cash
+  postings use `USD`; the two are separate balanced postings, not a single four-line journal.
+  This is acceptable for the baseline but may be unified later.
+- No account creation validation yet; accounts are created implicitly on first use.
+
+**Consequences:**
+- `finex-ledger` is a dependency of `finex-api`.
+- Every trade creates exactly two balanced postings (4 entries).
+- `InMemoryLedger` rejects unbalanced postings and never mutates existing entries.
+- `OrderService.ledger()` exposes the ledger for tests and external queries.

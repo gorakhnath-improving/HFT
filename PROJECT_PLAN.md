@@ -234,20 +234,19 @@ full/partial fill scenario.
 ## Phase 11 — Ledger
 **Goal:** Double-entry ledger, immutable entries, debits == credits invariant.
 **Dependencies:** Phase 2, 4, 7, 10.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-ledger` Maven module depending on `finex-common`
-- [ ] `LedgerAccount` with code, type, and currency
-- [ ] `LedgerEntry` immutable record (id, timestamp, account code, debit/credit flag, amount, narration)
-- [ ] `Ledger` interface: `post(List<LedgerEntry>)`, `entries()`, `balance(accountCode)`
-- [ ] In-memory `InMemoryLedger` enforcing `sum(debits) == sum(credits)` for every post
-- [ ] `OrderService` posts trade settlement entries (buyer cash/asset, seller cash/asset)
-- [ ] `LedgerTest` verifying double-entry invariants and trade postings
+- [x] New `finex-ledger` Maven module depending on `finex-common`
+- [x] `AccountType`, `DebitCredit`, `LedgerAccount`, `LedgerEntry`
+- [x] `Ledger` interface: `post(List<LedgerEntry>)`, `entries()`, `balance(accountCode)`
+- [x] In-memory `InMemoryLedger` enforcing `sum(debits) == sum(credits)` for every post
+- [x] `OrderService` posts trade settlement entries (cash and asset legs for buyer/seller)
+- [x] `InMemoryLedgerTest` and `OrderServiceLedgerTest`
 **Acceptance criteria:**
-- [ ] `mvn test` passes including ledger tests
-- [ ] Every trade creates balanced ledger entries (debits == credits)
-- [ ] Ledger entries are immutable and append-only
-**Tests:** `LedgerTest`, updated `OrderService` test.
+- [x] `mvn test` passes including ledger tests
+- [x] Every trade creates balanced ledger entries (debits == credits)
+- [x] Ledger entries are immutable and append-only
+**Tests:** `InMemoryLedgerTest`, `OrderServiceLedgerTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-ledger` module integrated into `OrderService`.
 

@@ -1,23 +1,12 @@
 # TODO — Active Task Queue
 
-## Phase 10 — Symbol Sharding (done)
+## Phase 11 — Ledger (done)
 
-- [x] `finex-shard` module and `OrderService` routing
-
-## Phase 11 — Ledger (in progress)
-
-Goal: Double-entry ledger, immutable entries, debits == credits invariant.
-- [ ] Create `finex-ledger` Maven module
-- [ ] `LedgerAccount` (code, type: asset/liability/equity/revenue/expense)
-- [ ] `LedgerEntry` immutable (id, timestamp, account, debit/credit, amount, currency, narration)
-- [ ] `Ledger` interface: `post(List<LedgerEntry>)`, `balance(account)`, `entries()`
-- [ ] In-memory `InMemoryLedger` enforcing `sum(debits) == sum(credits)` per post
-- [ ] `OrderService` posts cash/asset transfers on trade (buyer cash credit, asset debit, etc.)
-- [ ] `LedgerTest` verifying double-entry invariants and trade postings
-- [ ] `mvn test` green + commit
+- [x] `finex-ledger` module and `OrderService` postings
 
 ## Final
 
-- [ ] Full `mvn test`
+- [x] Full `mvn test` green
 - [ ] Commit Phase 11
-- [ ] Update `README.md` / `DESIGN_DECISIONS.md` / `PROJECT_PLAN.md` / `PROGRESS.md` if needed
+- [ ] Update `DESIGN_DECISIONS.md` with ADR-006 (sharding) and ADR-007 (ledger)
+- [ ] Update `README.md` / `PROGRESS.md` as needed
