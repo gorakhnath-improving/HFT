@@ -4,6 +4,38 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 8: Phases 12-16 — Portfolio, Clearing, Settlement, Replay, Load Generator
+
+**Phase:** 11 → 12 → 13 → 14 → 15 → 16 (done)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md`, `README.md`, `DESIGN_DECISIONS.md`.
+- **Phase 12 — Portfolio / P&L:** Added `finex-portfolio` module with `Position`, `Portfolio`,
+  `PortfolioService`, and `PortfolioController` (`GET /api/v1/portfolios/{accountId}`).
+  Tracks signed quantity, average price, realized/unrealized PnL, cash, and total equity.
+- **Phase 13 — Clearing:** Added `finex-clearing` with `FeeSchedule`, `ClearingResult`, and
+  `ClearingService` computing net buyer/seller cash and fee accrual.
+- **Phase 14 — Settlement:** Added `finex-settlement` with `SettlementService` orchestrating
+  clearing → ledger posting → portfolio update. `OrderService` delegates per-trade settlement.
+- **Phase 15 — Replay:** Extended `OrderServiceReplayTest` to assert that a fresh `OrderService`
+  replay produces identical order book, orders, ledger entries, and portfolios.
+- **Phase 16 — Load Generator:** Added `finex-load-generator` module with `LoadConfig`,
+  `LoadResult`, and `LoadGenerator` driving `OrderService` and reporting throughput/latency.
+  `LoadGeneratorTest` validates deterministic shape and trades.
+- Added ADR-008 (clearing/settlement) and ADR-009 (load generator) to `DESIGN_DECISIONS.md`.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS across all modules including the new `finex-portfolio`, `finex-clearing`,
+  `finex-settlement`, `finex-load-generator`, and updated `finex-api` tests.
+
+**Blockers:** None.
+
+**Next session should:**
+- Start Phase 17 — Performance Benchmarks (JMH/component/end-to-end) or any other priority.
+
+---
+
 ## 2026-09-02 — Session 7: Phases 7-11 — Market Data, Binary Protocol, Event Log, Sharding, Ledger
 
 **Phase:** 6 → 7 → 8 → 9 → 10 → 11 (done)

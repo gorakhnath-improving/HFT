@@ -6,11 +6,11 @@ demonstrate both **FinTech correctness** (ledger, risk, clearing, settlement, au
 profiling). Full scope and roadmap: [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (derived from
 [`../Master Plan.md`](../Master%20Plan.md)).
 
-> **Status:** Phase 11 — Ledger completed (Phases 7-11 batch). Market-data events,
-> compact binary protocol, append-only event log with replay, symbol sharding, and a
-> double-entry ledger are now integrated. Pre-trade risk and deterministic matching remain in
-> place. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and [`PROGRESS.md`]
-> (PROGRESS.md) for the session log.
+> **Status:** Phase 16 — Load Generator completed (Phases 12-16 batch). Portfolio / P&L,
+> clearing, settlement, replay verification, and a configurable load generator are now
+> integrated on top of the existing matching, risk, market-data, event-log, sharding, and
+> ledger stack. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and
+> [`PROGRESS.md`](PROGRESS.md) for the session log.
 
 ## Project layout
 
@@ -25,6 +25,10 @@ finex/
 ├── finex-event-log/       append-only command events and replay
 ├── finex-shard/           symbol sharding and engine shards
 ├── finex-ledger/          double-entry ledger
+├── finex-portfolio/       positions, P&L, and equity
+├── finex-clearing/        trade clearing and fee schedule
+├── finex-settlement/      settlement orchestration
+├── finex-load-generator/  configurable order-load harness
 ├── finex-api/             Spring Boot REST app (administrative/developer-facing, not the hot path)
 ├── docker/                config for containerized infra (prometheus, grafana)
 ├── docker-compose.yml     infra dependencies: postgres, prometheus, grafana

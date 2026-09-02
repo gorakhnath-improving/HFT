@@ -1,7 +1,7 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 13 — Clearing (batched: Phases 12-16 requested)
-**Current task:** Compute buyer/seller obligations, fees, and net cash/asset transfers per trade.
+**Current phase:** Phase 16 — Load Generator (batched: Phases 12-16 completed)
+**Current task:** Update project docs and perform final commit(s).
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -14,11 +14,13 @@
 - `finex-shard` — symbol sharding
 - `finex-ledger` — double-entry ledger
 - `finex-portfolio` — positions and P&L
-- `finex-api` — `OrderService` + `OrderController` + `PortfolioController`
-- (in progress) `finex-clearing` for obligations and fees
+- `finex-clearing` — trade clearing and fees
+- `finex-settlement` — settlement orchestration
+- `finex-load-generator` — configurable load generator
+- `finex-api` — `OrderService` + controllers
 
 **Completed milestones:**
-- Phases 1-12 committed.
+- Phases 1-16 completed and committed.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -27,10 +29,10 @@ containers from other projects; pass `DB_PORT=<free-port>` when starting `docker
 
 **Current benchmark:** N/A.
 
-**Last successful build:** `mvn test` green after Phase 12.
+**Last successful build:** `mvn test` green after Phase 16.
 
-**Next action:** Create `finex-clearing` module with `FeeSchedule`, `ClearingResult`, and
-`ClearingService`; integrate fee ledger entries into `OrderService`.
+**Next action:** Update `PROJECT_PLAN.md`, `PROGRESS.md`, `README.md`, `TODO.md`, `DESIGN_DECISIONS.md`
+and commit.
 
 **Important commands:**
 ```bash

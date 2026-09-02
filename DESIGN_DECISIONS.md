@@ -310,6 +310,82 @@ it in memory matches the current baseline; persistence will be added when settle
 
 **Consequences:**
 - `finex-ledger` is a dependency of `finex-api`.
-- Every trade creates exactly two balanced postings (4 entries).
+- Every trade creates a cash posting (3 entries when fees are present) and an asset posting
+  (2 entries).
 - `InMemoryLedger` rejects unbalanced postings and never mutates existing entries.
-- `OrderService.ledger()` exposes the ledger for tests and external queries.
+- `OrderService.ledger()` exposes the ledger for tests and external queries; replay now
+  reconstructs an identical ledger.
+
+---
+
+## ADR-008: Clearing and settlement — separate modules with a single orchestrator
+
+**Context:** Phases 13 and 14 require trade clearing (buyer/seller obligations and fees) and
+settlement (cash/asset movement, ledger finalization, and portfolio update). The modules need
+a clear responsibility split without fragmenting the per-trade flow.
+
+**Options:**
+- Put clearing, settlement, portfolio, and ledger logic all inside `OrderService`: simplest for
+  small scale but couples every concern and makes testing/reuse hard.
+- Split into separate modules but let `OrderService` call each one individually: clearer, but the
+  caller still owns the correct ordering of clearing → ledger → portfolio.
+- Add a `SettlementService` in a dedicated `finex-settlement` module that owns the whole
+  post-trade lifecycle; `OrderService` makes one call per trade.
+
+**Decision:** Create `finex-clearing` for fee schedule and obligation math, and `finex-settlement`
+as the orchestrator that uses `ClearingService`, `Ledger`, and `PortfolioService`.
+`OrderService` calls `settlementService.settle(trade, takerSide, now, markPrice)`.
+
+**Reason:** This keeps each module focused and testable in isolation. `OrderService` stays a
+coordinator of matching, risk, market data, events, and settlement rather than a growing blob
+of accounting logic. The fee/taker math lives in `ClearingService`, which can later be replaced
+by a real clearing engine.
+
+**Tradeoffs:**
+- Additional module wiring and one more object allocation per trade (the `ClearingResult`).
+- `OrderService` still passes `command.side()` as the taker side because the matching engine
+  does not yet record aggressor on the `Trade`. This is an acceptable leak until `Trade` is
+  extended.
+
+**Consequences:**
+- `finex-clearing` and `finex-settlement` are dependencies of `finex-api`.
+- A trade produces balanced ledger entries including a `FEE.ACCRUAL` debit.
+- `PortfolioService` cash reflects net clearing deltas (notional ± fees).
+- `SettlementServiceTest` verifies ledger + portfolio state for a single trade.
+
+---
+
+## ADR-009: Load generator — deterministic, single-threaded harness
+
+**Context:** Phase 16 needs a dedicated Java load generator that can exercise the exchange with
+configurable workloads before building full JMH/component benchmarks (Phase 17).
+
+**Options:**
+- Use an external tool (e.g. JMeter, k6, wrk): can hit the HTTP API but does not exercise the
+  internal `OrderService` directly and adds infrastructure.
+- Write a small Java harness inside `finex-api` tests: quick, but not reusable as a CLI entry
+  point.
+- Create a separate `finex-load-generator` module that depends on `finex-api` and drives
+  `OrderService` directly: reusable, testable, and can evolve into a real benchmark driver.
+
+**Decision:** Add `finex-load-generator` with `LoadConfig`, `LoadResult`, and `LoadGenerator`.
+The generator submits orders deterministically and reports throughput, average latency, and
+maximum latency. It intentionally runs single-threaded on the caller thread to establish a
+baseline latency distribution.
+
+**Reason:** A separate module keeps load generation out of the production API while still using
+the real `OrderService` and matching stack. Deterministic pricing (alternating sells below and
+buys above the base price) guarantees trades and leaves book depth for later assertions.
+
+**Tradeoffs:**
+- Single-threaded throughput is far below the eventual 1M orders/sec target; it is a functional
+  harness, not a final benchmark.
+- Wall-clock latency includes JVM warm-up and GC; results are for shape/relative comparison, not
+  absolute performance claims.
+- Depending on `finex-api` pulls in Spring Boot and Testcontainers dependencies; for a dedicated
+  load runner this is acceptable for now and can be trimmed later.
+
+**Consequences:**
+- `finex-load-generator` is part of the reactor and runs `LoadGeneratorTest` in `mvn test`.
+- `LoadResult` is serializable and suitable for future benchmark reporting.
+- A future CLI main class can call `LoadGenerator.run(config)` directly.

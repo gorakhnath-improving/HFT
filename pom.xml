@@ -32,6 +32,7 @@
         <module>finex-portfolio</module>
         <module>finex-clearing</module>
         <module>finex-settlement</module>
+        <module>finex-load-generator</module>
         <module>finex-api</module>
     </modules>
 
@@ -102,6 +103,16 @@
             <dependency>
                 <groupId>com.finex</groupId>
                 <artifactId>finex-settlement</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-load-generator</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

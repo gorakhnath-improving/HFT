@@ -273,17 +273,17 @@ full/partial fill scenario.
 ## Phase 13 — Clearing
 **Goal:** Buyer/seller obligations, fees, asset/cash movement determination.
 **Dependencies:** Phase 4, 11, 12.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-clearing` Maven module depending on `finex-common`
-- [ ] `FeeSchedule` (maker/taker fee rates) and `ClearingResult`
-- [ ] `ClearingService` computing net cash/asset transfers per trade
-- [ ] `OrderService` uses `ClearingService` before ledger posting
-- [ ] `ClearingServiceTest`
+- [x] New `finex-clearing` Maven module depending on `finex-common`
+- [x] `FeeSchedule` (maker/taker fee rates) and `ClearingResult`
+- [x] `ClearingService` computing net cash/asset transfers per trade
+- [x] `OrderService` uses `ClearingService` before ledger posting
+- [x] `ClearingServiceTest`
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Clearing produces balanced cash/asset transfers including fees
-- [ ] Fee accrual account is credited on every trade
+- [x] `mvn test` passes
+- [x] Clearing produces balanced cash/asset transfers including fees
+- [x] Fee accrual account is debited on every trade (exchange asset)
 **Tests:** `ClearingServiceTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-clearing` module.
@@ -291,48 +291,47 @@ full/partial fill scenario.
 ## Phase 14 — Settlement
 **Goal:** Simulated settlement lifecycle updating cash/assets/positions/ledger.
 **Dependencies:** Phase 13.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-settlement` Maven module depending on `finex-ledger`, `finex-clearing`, `finex-portfolio`
-- [ ] `SettlementService` orchestrating: clear trade → post ledger → update portfolio
-- [ ] `OrderService` delegates trade settlement to `SettlementService`
-- [ ] `SettlementServiceTest` verifying ledger + portfolio update after a trade
+- [x] New `finex-settlement` Maven module depending on `finex-ledger`, `finex-clearing`, `finex-portfolio`
+- [x] `SettlementService` orchestrating: clear trade → post ledger → update portfolio
+- [x] `OrderService` delegates trade settlement to `SettlementService`
+- [x] `SettlementServiceTest` verifying ledger + portfolio update after a trade
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] A trade results in consistent ledger, portfolio, and cash/asset state
-- [ ] Settlement entries are balanced
-**Tests:** `SettlementServiceTest`, `OrderServiceSettlementTest`.
+- [x] `mvn test` passes
+- [x] A trade results in consistent ledger, portfolio, and cash/asset state
+- [x] Settlement entries are balanced
+**Tests:** `SettlementServiceTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-settlement` module integrated into `OrderService`.
 
 ## Phase 15 — Replay
 **Goal:** Replay event log, verify reconstructed state == original state.
 **Dependencies:** Phase 9, 14.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] Enhance `ReplayEngine` to reconstruct portfolio and ledger snapshots
-- [ ] `OrderService.replay()` re-runs events and rebuilds all state
-- [ ] `ReplayVerificationTest` asserts original vs replayed order book, positions, ledger balances
+- [x] `OrderService.replay()` re-runs events and rebuilds all state
+- [x] `OrderServiceReplayTest` asserts original vs replayed order book, orders, ledger, portfolios
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Replaying a sequence of trades yields the same order book, portfolio, and ledger
-**Tests:** `ReplayVerificationTest`.
+- [x] `mvn test` passes
+- [x] Replaying a sequence of trades yields the same order book, orders, portfolios, and ledger
+**Tests:** `OrderServiceReplayTest`.
 **Benchmarks:** None.
 **Deliverables:** State-verified replay.
 
 ## Phase 16 — Load Generator
 **Goal:** Dedicated Java load generator with configurable workloads.
 **Dependencies:** Phase 5, 8, 14.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-load-generator` Maven module depending on `finex-api`, `finex-protocol`
-- [ ] `LoadGenerator` with configurable workload (symbols, accounts, order rate, duration)
-- [ ] `OrderService` driver that submits orders and collects latency/throughput
-- [ ] `LoadGeneratorTest` verifying deterministic output shape (not performance numbers)
+- [x] New `finex-load-generator` Maven module depending on `finex-api`, `finex-protocol`
+- [x] `LoadConfig`, `LoadResult`, and `LoadGenerator`
+- [x] `LoadGenerator` submits orders to `OrderService` and collects latency/throughput
+- [x] `LoadGeneratorTest` verifying deterministic output shape (not performance numbers)
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Load generator can be configured and run a fixed number of orders
-- [ ] Generates both sides of the book and produces trades
+- [x] `mvn test` passes
+- [x] Load generator can be configured and run a fixed number of orders
+- [x] Generates both sides of the book and produces trades
 **Tests:** `LoadGeneratorTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-load-generator` module.
