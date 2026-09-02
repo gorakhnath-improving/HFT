@@ -15,6 +15,12 @@ import com.finex.common.domain.Trade;
 import com.finex.common.domain.enums.OrderStatus;
 import com.finex.common.domain.enums.OrderType;
 import com.finex.common.domain.enums.Side;
+import com.finex.marketdata.BookUpdate;
+import com.finex.marketdata.BookUpdateFactory;
+import com.finex.marketdata.ExecutionEvent;
+import com.finex.marketdata.MarketDataPublisher;
+import com.finex.marketdata.SimpleMarketDataPublisher;
+import com.finex.marketdata.TradeEvent;
 import com.finex.matching.MatchResult;
 import com.finex.matching.MatchingEngine;
 import com.finex.orderbook.OrderBook;
@@ -30,6 +36,9 @@ import com.finex.risk.RiskResult;
  *
  * <p>Phase 6 adds a baseline in-memory {@link RiskEngine} that validates every order before
  * it reaches the matching engine and updates account cash/positions when trades occur.
+ *
+ * <p>Phase 7 adds a {@link MarketDataPublisher} that emits {@link TradeEvent},
+ * {@link ExecutionEvent}, and {@link BookUpdate} events on every book-changing action.
  */
 @Service
 public class OrderService {
@@ -44,6 +53,8 @@ public class OrderService {
     private final RiskEngine riskEngine = new RiskEngine(RiskConfig.defaults());
     private final Map<Long, AccountRiskState> riskStates = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> lastTradePrices = new ConcurrentHashMap<>();
+
+    private final MarketDataPublisher publisher = new SimpleMarketDataPublisher();
 
     public MatchResult submitOrder(OrderRequest request, Instant now) {
         validateRequest(request);
@@ -80,6 +91,8 @@ public class OrderService {
             lastTradePrices.put(request.symbol(), trade.price());
             applyTradeToRiskState(trade);
         }
+        publishMatchEvents(request.symbol(), result, now);
+        publishBookUpdate(request.symbol(), engine, now);
         return result;
     }
 
@@ -111,6 +124,7 @@ public class OrderService {
                     if (state != null) {
                         riskEngine.onCancel(state, orderId);
                     }
+                    publishBookUpdate(cancelledOrder.symbol(), engine, now);
                 }
                 return cancelled;
             }
@@ -127,6 +141,13 @@ public class OrderService {
         return Optional.of(OrderBookView.from(symbol, book.getBids(), book.getAsks()));
     }
 
+    /**
+     * Exposes the market-data publisher so callers can subscribe to market events.
+     */
+    public MarketDataPublisher marketDataPublisher() {
+        return publisher;
+    }
+
     private AccountRiskState riskState(long accountId) {
         return riskStates.computeIfAbsent(accountId, id ->
                 new AccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION, riskEngine.config()));
@@ -137,6 +158,52 @@ public class OrderService {
         AccountRiskState seller = riskState(trade.sellerAccountId());
         riskEngine.onTrade(buyer, trade.buyOrderId(), trade, Side.BUY);
         riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
+    }
+
+    private void publishMatchEvents(String symbol, MatchResult result, Instant now) {
+        if (result.trades().isEmpty()) {
+            return;
+        }
+        MatchingEngine engine = engines.get(symbol);
+        if (engine == null) {
+            return;
+        }
+
+        Order finalIncoming = result.order();
+        for (Trade trade : result.trades()) {
+            publisher.publish(new TradeEvent(symbol, trade, now));
+
+            long buyOrderId = trade.buyOrderId();
+            long sellOrderId = trade.sellOrderId();
+            publisher.publish(new ExecutionEvent(
+                    buyOrderId,
+                    trade.buyerAccountId(),
+                    symbol,
+                    trade,
+                    orderStatusFor(engine, buyOrderId, finalIncoming),
+                    now));
+            publisher.publish(new ExecutionEvent(
+                    sellOrderId,
+                    trade.sellerAccountId(),
+                    symbol,
+                    trade,
+                    orderStatusFor(engine, sellOrderId, finalIncoming),
+                    now));
+        }
+    }
+
+    private OrderStatus orderStatusFor(MatchingEngine engine, long orderId, Order finalIncoming) {
+        if (orderId == finalIncoming.orderId()) {
+            return finalIncoming.status();
+        }
+        return engine.orderBook().findOrder(orderId)
+                .map(Order::status)
+                .orElse(OrderStatus.FILLED);
+    }
+
+    private void publishBookUpdate(String symbol, MatchingEngine engine, Instant now) {
+        BookUpdate update = BookUpdateFactory.from(symbol, engine.orderBook(), now);
+        publisher.publish(update);
     }
 
     private static void validateRequest(OrderRequest request) {

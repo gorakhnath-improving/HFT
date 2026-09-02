@@ -1,40 +1,30 @@
 # TODO — Active Task Queue
 
-Only the current phase's atomic tasks live here in detail. See PROJECT_PLAN.md for the
-full roadmap.
+## Phase 7 — Market Data (done)
 
-## Phase 1 — Repository Bootstrap (done)
+- [x] `finex-market-data` module
+- [x] Events and publisher wired into `OrderService`
+- [x] Tests + commit
 
-- [x] Commit (`ac84774`)
+## Phase 8 — Binary Protocol (in progress)
 
-## Phase 2 — Financial Domain Model (done)
+Goal: Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
+- [ ] Create `finex-protocol` Maven module
+- [ ] Define message types and `ProtocolMessage` sealed hierarchy
+- [ ] Implement `BinaryCodec` (encode/decode to/from `ByteBuffer`)
+- [ ] `NEW_ORDER`, `CANCEL_ORDER`, `MODIFY_ORDER` request messages
+- [ ] `ORDER_ACK`, `ORDER_REJECTED`, `EXECUTION` response messages
+- [ ] `ProtocolCodecTest`
+- [ ] `mvn test` green + commit
 
-- [x] Commit (`f975cb9`)
+## Phase 9 — Event Architecture (pending)
 
-## Phase 3 — Correct Order Book (done)
+Goal: Append-only event log powering replay.
 
-- [x] Commit (`32a22ca`)
+## Phase 10 — Symbol Sharding (pending)
 
-## Phase 4 — Matching Engine (done)
+Goal: Multiple independent matching engine shards; scaling measurements.
 
-- [x] Commit (`081d4ab`)
+## Phase 11 — Ledger (pending)
 
-## Phase 5 — REST/API Layer (done)
-
-- [x] Commit (`27a7ab1`)
-
-## Phase 6 — Risk Engine (done)
-
-- [x] New `finex-risk` module
-- [x] `RiskEngine`, `RiskConfig`, `AccountRiskState`, `RiskResult`
-- [x] `RiskEngineTest`
-- [x] Integrate into `OrderService` / `OrderController`
-- [x] Update `OrderControllerTest` with risk rejection cases
-- [x] Update `README.md`
-- [x] Build + `mvn test` green
-- [ ] Commit Phase 6 work
-
-## Phase 7 — Market Data (next)
-
-Goal: BOOK_UPDATE/TRADE/EXECUTION events, snapshot + incremental, async publication.
-Dependencies: Phase 4, 5, 6 (done).
+Goal: Double-entry ledger, immutable entries, debits == credits invariant.

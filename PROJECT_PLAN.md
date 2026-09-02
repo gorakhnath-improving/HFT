@@ -154,23 +154,60 @@ full/partial fill scenario.
 
 ## Phase 7 — Market Data
 **Goal:** BOOK_UPDATE/TRADE/EXECUTION events, snapshot + incremental, async publication.
-**Dependencies:** Phase 4.
+**Dependencies:** Phase 4, 5, 6.
+**Status:** Done.
+**Tasks:**
+- [x] New `finex-market-data` Maven module depending on `finex-common` and `finex-matching-engine`
+- [x] `MarketDataEvent` sealed hierarchy: `BookUpdate`, `TradeEvent`, `ExecutionEvent`
+- [x] `PriceLevel` view type for book levels
+- [x] `MarketDataPublisher` / `MarketDataListener` interface; synchronous baseline `SimpleMarketDataPublisher`
+- [x] Wire `OrderService` to publish `TradeEvent` for each `Trade` and `ExecutionEvent` for each affected order
+- [x] Publish `BookUpdate` (full snapshot) after each submit/cancel; incremental deltas will be derived later
+- [x] `MarketDataPublisherTest` verifying listener receives trade and book events
+**Acceptance criteria:**
+- [x] `mvn test` passes including new market-data tests
+- [x] Submitting an order that trades produces `TradeEvent` and `ExecutionEvent`s
+- [x] `OrderService` publishes a `BookUpdate` after order state changes
+- [x] Listener interface is extensible for async publication later
+**Tests:** `MarketDataPublisherTest` + `OrderControllerTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-market-data` module integrated into `OrderService`.
 
 ## Phase 8 — Binary Protocol
 **Goal:** Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
-**Dependencies:** Phase 4, 5.
+**Dependencies:** Phase 4, 5, 6, 7.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-protocol` Maven module depending on `finex-common`
+- [ ] `ProtocolMessage` sealed hierarchy: `NewOrder`, `CancelOrder`, `ModifyOrder`, `OrderAck`, `OrderRejected`, `ExecutionReport`
+- [ ] `BinaryCodec` with `encode`/`decode` using `ByteBuffer`
+- [ ] Message framing: 4-byte length header + payload
+- [ ] Test round-trip encoding for each message type
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Codec round-trips all message types without allocation overhead beyond necessary
+**Tests:** `BinaryCodecTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-protocol` module with binary codec.
+
+## Phase 8 — Binary Protocol
+**Goal:** Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
+**Dependencies:** Phase 4, 5, 6, 7.
+**Status:** Not started.
 
 ## Phase 9 — Event Architecture
 **Goal:** Append-only event log powering replay.
-**Dependencies:** Phase 4.
+**Dependencies:** Phase 4, 7.
+**Status:** Not started.
 
 ## Phase 10 — Symbol Sharding
 **Goal:** Multiple independent matching engine shards; scaling measurements.
 **Dependencies:** Phase 4, 25 (concurrency model).
+**Status:** Not started.
 
 ## Phase 11 — Ledger
 **Goal:** Double-entry ledger, immutable entries, debits == credits invariant.
-**Dependencies:** Phase 2.
+**Dependencies:** Phase 2, 4, 7.
 
 ## Phase 12 — Portfolio / P&L
 **Goal:** Position, avg price, realized/unrealized P&L, exposure, equity.
