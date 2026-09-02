@@ -49,6 +49,10 @@
             <groupId>com.finex</groupId>
             <artifactId>finex-ledger</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.finex</groupId>
+            <artifactId>finex-portfolio</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

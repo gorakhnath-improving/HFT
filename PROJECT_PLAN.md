@@ -253,22 +253,89 @@ full/partial fill scenario.
 ## Phase 12 — Portfolio / P&L
 **Goal:** Position, avg price, realized/unrealized P&L, exposure, equity.
 **Dependencies:** Phase 11.
+**Status:** Done.
+**Tasks:**
+- [x] New `finex-portfolio` Maven module depending on `finex-common`
+- [x] `Position` record (symbol, signed quantity, avgPrice, realizedPnl, unrealizedPnl)
+- [x] `Portfolio` record per account (cash, positions, totalEquity)
+- [x] `PortfolioService` updating positions/cash on every trade, marking to market
+- [x] `GET /api/v1/portfolios/{accountId}` endpoint in `PortfolioController`
+- [x] `PortfolioServiceTest`, `OrderServicePortfolioTest`
+**Acceptance criteria:**
+- [x] `mvn test` passes
+- [x] Buying increases position and avg price; selling reduces position and realizes PnL
+- [x] Unrealized PnL updates when mark price changes
+- [x] Total equity = cash + sum(unrealizedPnl)
+**Tests:** `PortfolioServiceTest`, `OrderServicePortfolioTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-portfolio` module integrated into `OrderService`.
 
 ## Phase 13 — Clearing
 **Goal:** Buyer/seller obligations, fees, asset/cash movement determination.
-**Dependencies:** Phase 4, 11.
+**Dependencies:** Phase 4, 11, 12.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-clearing` Maven module depending on `finex-common`
+- [ ] `FeeSchedule` (maker/taker fee rates) and `ClearingResult`
+- [ ] `ClearingService` computing net cash/asset transfers per trade
+- [ ] `OrderService` uses `ClearingService` before ledger posting
+- [ ] `ClearingServiceTest`
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Clearing produces balanced cash/asset transfers including fees
+- [ ] Fee accrual account is credited on every trade
+**Tests:** `ClearingServiceTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-clearing` module.
 
 ## Phase 14 — Settlement
 **Goal:** Simulated settlement lifecycle updating cash/assets/positions/ledger.
 **Dependencies:** Phase 13.
+**Status:** Not started.
+**Tasks:**
+- [ ] New `finex-settlement` Maven module depending on `finex-ledger`, `finex-clearing`, `finex-portfolio`
+- [ ] `SettlementService` orchestrating: clear trade → post ledger → update portfolio
+- [ ] `OrderService` delegates trade settlement to `SettlementService`
+- [ ] `SettlementServiceTest` verifying ledger + portfolio update after a trade
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] A trade results in consistent ledger, portfolio, and cash/asset state
+- [ ] Settlement entries are balanced
+**Tests:** `SettlementServiceTest`, `OrderServiceSettlementTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-settlement` module integrated into `OrderService`.
 
 ## Phase 15 — Replay
 **Goal:** Replay event log, verify reconstructed state == original state.
-**Dependencies:** Phase 9.
+**Dependencies:** Phase 9, 14.
+**Status:** Not started.
+**Tasks:**
+- [ ] Enhance `ReplayEngine` to reconstruct portfolio and ledger snapshots
+- [ ] `OrderService.replay()` re-runs events and rebuilds all state
+- [ ] `ReplayVerificationTest` asserts original vs replayed order book, positions, ledger balances
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Replaying a sequence of trades yields the same order book, portfolio, and ledger
+**Tests:** `ReplayVerificationTest`.
+**Benchmarks:** None.
+**Deliverables:** State-verified replay.
 
 ## Phase 16 — Load Generator
 **Goal:** Dedicated Java load generator with configurable workloads.
-**Dependencies:** Phase 5, 8.
+**Dependencies:** Phase 5, 8, 14.
+**Status:** Not started.
+**Tasks:**
+- [ ] New `finex-load-generator` Maven module depending on `finex-api`, `finex-protocol`
+- [ ] `LoadGenerator` with configurable workload (symbols, accounts, order rate, duration)
+- [ ] `OrderService` driver that submits orders and collects latency/throughput
+- [ ] `LoadGeneratorTest` verifying deterministic output shape (not performance numbers)
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Load generator can be configured and run a fixed number of orders
+- [ ] Generates both sides of the book and produces trades
+**Tests:** `LoadGeneratorTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-load-generator` module.
 
 ## Phase 17 — Performance Benchmarks
 **Goal:** JMH microbenchmarks, component benchmarks, end-to-end benchmarks.

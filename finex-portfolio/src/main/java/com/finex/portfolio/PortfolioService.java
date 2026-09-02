@@ -1,0 +1,76 @@
+package com.finex.portfolio;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import com.finex.common.domain.Trade;
+import com.finex.common.domain.enums.Side;
+
+/**
+ * Maintains per-account positions and cash, and computes realized/unrealized P&L. The
+ * service is intentionally in-memory and single-node for the baseline.
+ */
+public class PortfolioService {
+
+    private static final BigDecimal DEFAULT_INITIAL_CASH = new BigDecimal("1000000");
+
+    private final Map<Long, BigDecimal> cash = new ConcurrentHashMap<>();
+    private final Map<Long, Map<String, Position>> positions = new ConcurrentHashMap<>();
+
+    /**
+     * Applies a trade to both the buyer's and seller's portfolios. {@code markPrice} is used
+     * to revalue the resulting position for unrealized P&L (typically the trade price).
+     */
+    public void applyTrade(Trade trade, BigDecimal markPrice) {
+        if (trade == null) {
+            throw new IllegalArgumentException("trade must not be null");
+        }
+        if (markPrice == null || markPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("markPrice must be positive");
+        }
+
+        BigDecimal notional = trade.price().multiply(trade.quantity());
+        update(trade.buyerAccountId(), trade.symbol(), Side.BUY, trade.price(), trade.quantity(), markPrice, notional.negate());
+        update(trade.sellerAccountId(), trade.symbol(), Side.SELL, trade.price(), trade.quantity(), markPrice, notional);
+    }
+
+    /**
+     * Revalues all positions for {@code symbol} across all accounts at {@code markPrice}.
+     */
+    public void markToMarket(String symbol, BigDecimal markPrice) {
+        if (symbol == null || symbol.isBlank()) {
+            throw new IllegalArgumentException("symbol must not be blank");
+        }
+        if (markPrice == null || markPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("markPrice must be positive");
+        }
+        for (Map<String, Position> accountPositions : positions.values()) {
+            Position position = accountPositions.get(symbol);
+            if (position != null) {
+                accountPositions.put(symbol, position.mark(markPrice));
+            }
+        }
+    }
+
+    public Portfolio portfolio(long accountId) {
+        BigDecimal accountCash = cash.getOrDefault(accountId, DEFAULT_INITIAL_CASH);
+        Map<String, Position> accountPositions = positions.getOrDefault(accountId, Map.of());
+        List<Position> positionList = List.copyOf(accountPositions.values());
+        BigDecimal unrealized = positionList.stream()
+                .map(Position::unrealizedPnl)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new Portfolio(accountId, accountCash, positionList, accountCash.add(unrealized));
+    }
+
+    private void update(long accountId, String symbol, Side side, BigDecimal price, BigDecimal quantity,
+                        BigDecimal markPrice, BigDecimal cashDelta) {
+        cash.compute(accountId, (k, v) -> (v == null ? DEFAULT_INITIAL_CASH : v).add(cashDelta));
+        Map<String, Position> accountPositions = positions.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>());
+        Position current = accountPositions.getOrDefault(symbol,
+                new Position(symbol, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        Position updated = current.withTrade(side, price, quantity, markPrice);
+        accountPositions.put(symbol, updated);
+    }
+}

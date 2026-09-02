@@ -27,6 +27,8 @@ import com.finex.ledger.InMemoryLedger;
 import com.finex.ledger.Ledger;
 import com.finex.ledger.LedgerEntry;
 import com.finex.marketdata.BookUpdate;
+import com.finex.portfolio.Portfolio;
+import com.finex.portfolio.PortfolioService;
 import com.finex.marketdata.BookUpdateFactory;
 import com.finex.marketdata.ExecutionEvent;
 import com.finex.marketdata.MarketDataPublisher;
@@ -79,6 +81,7 @@ public class OrderService implements CommandHandler {
     private final MarketDataPublisher publisher = new SimpleMarketDataPublisher();
     private final EventStore eventStore;
     private final Ledger ledger = new InMemoryLedger();
+    private final PortfolioService portfolioService = new PortfolioService();
 
     public OrderService() {
         this(new InMemoryEventStore(), 1);
@@ -151,6 +154,8 @@ public class OrderService implements CommandHandler {
             lastTradePrices.put(command.symbol(), trade.price());
             applyTradeToRiskState(trade);
             postTradeToLedger(trade, now);
+            portfolioService.applyTrade(trade, trade.price());
+            portfolioService.markToMarket(command.symbol(), trade.price());
         }
         publishMatchEvents(command.symbol(), shard, result, now);
         publishBookUpdate(command.symbol(), shard, now);
@@ -238,6 +243,13 @@ public class OrderService implements CommandHandler {
      */
     public Ledger ledger() {
         return ledger;
+    }
+
+    /**
+     * Returns the portfolio for an account.
+     */
+    public Portfolio portfolio(long accountId) {
+        return portfolioService.portfolio(accountId);
     }
 
     /**

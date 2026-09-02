@@ -1,7 +1,7 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 11 — Ledger (done; finalizing batched Phases 7-11)
-**Current task:** Update remaining project docs and commit Phase 11.
+**Current phase:** Phase 13 — Clearing (batched: Phases 12-16 requested)
+**Current task:** Compute buyer/seller obligations, fees, and net cash/asset transfers per trade.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -11,24 +11,26 @@
 - `finex-market-data` — market-data events
 - `finex-protocol` — binary codec
 - `finex-event-log` — append-only events, replay
-- `finex-shard` — `ShardCoordinator`, `EngineShard`, `SymbolShardRouter`
+- `finex-shard` — symbol sharding
 - `finex-ledger` — double-entry ledger
-- `finex-api` — `OrderService` + `OrderController`
+- `finex-portfolio` — positions and P&L
+- `finex-api` — `OrderService` + `OrderController` + `PortfolioController`
+- (in progress) `finex-clearing` for obligations and fees
 
 **Completed milestones:**
-- Phases 1-11 committed or ready for commit.
+- Phases 1-12 committed.
 
-**Important decisions:** See `DESIGN_DECISIONS.md` / ADRs. ADR-000 through ADR-005 plus
-ADR-006 (sharding) and ADR-007 (ledger) should be added to document the new modules.
+**Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
 **Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
 containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
 
 **Current benchmark:** N/A.
 
-**Last successful build:** `mvn test` green after Phase 11.
+**Last successful build:** `mvn test` green after Phase 12.
 
-**Next action:** Final commit(s) for Phase 11 and optional ADRs.
+**Next action:** Create `finex-clearing` module with `FeeSchedule`, `ClearingResult`, and
+`ClearingService`; integrate fee ledger entries into `OrderService`.
 
 **Important commands:**
 ```bash
