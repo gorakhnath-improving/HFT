@@ -6,9 +6,10 @@ demonstrate both **FinTech correctness** (ledger, risk, clearing, settlement, au
 profiling). Full scope and roadmap: [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (derived from
 [`../Master Plan.md`](../Master%20Plan.md)).
 
-> **Status:** Phase 5 — REST/API Layer. The matching engine and order book are working
-> end-to-end through REST endpoints. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the
-> current task and [`PROGRESS.md`](PROGRESS.md) for the session log.
+> **Status:** Phase 6 — Risk Engine. Pre-trade risk checks (size, notional, collar,
+> position, exposure, rate limit) are enforced before an order reaches the matching engine.
+> See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and [`PROGRESS.md`]
+> (PROGRESS.md) for the session log.
 
 ## Project layout
 
@@ -17,6 +18,7 @@ finex/
 ├── finex-common/          shared domain model & utilities (framework-agnostic)
 ├── finex-order-book/      price-time-priority order book
 ├── finex-matching-engine/ deterministic matching engine
+├── finex-risk/            pre-trade risk engine
 ├── finex-api/             Spring Boot REST app (administrative/developer-facing, not the hot path)
 ├── docker/                config for containerized infra (prometheus, grafana)
 ├── docker-compose.yml     infra dependencies: postgres, prometheus, grafana
@@ -108,6 +110,28 @@ Get an order-book snapshot:
 ```bash
 curl -s localhost:8080/api/v1/order-books/BTC-USD | jq
 ```
+
+A rejected order returns `400 Bad Request` with `status: REJECTED` and a `rejectionReason`:
+
+```bash
+curl -s -X POST localhost:8080/api/v1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"clientOrderId":"big","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":"50000","quantity":"1000","accountId":100}' | jq
+```
+
+## Risk limits
+
+The baseline `RiskEngine` enforces per-account limits before an order reaches the book:
+
+| Limit               | Default | Checked for |
+|---------------------|---------|-------------|
+| Max order quantity  | 1000    | both sides  |
+| Max order notional  | 500000  | both sides  |
+| Max position        | 100     | both sides (long/short absolute) |
+| Max cash exposure   | 500000  | BUY total open notional |
+| Initial cash        | 1000000 | BUY available cash |
+| Price collar        | 10%     | LIMIT orders vs last trade price |
+| Max orders/second   | 10      | per account |
 
 ## Test
 

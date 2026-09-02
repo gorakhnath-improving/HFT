@@ -136,4 +136,83 @@ class OrderControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void rejectsPriceOutsideCollar() throws Exception {
+        // Establish last trade price at 50000 using a cross from two accounts.
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-s", "SELL", "50000", "1").replace("\"accountId\":100", "\"accountId\":200")))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-b", "BUY", "50000", "1")))
+                .andExpect(status().isOk());
+
+        // 75000 is 50% away from the last trade price, exceeding the 10% collar.
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-far", "BUY", "75000", "1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value(org.hamcrest.Matchers.containsString("collar")));
+    }
+
+    @Test
+    void rejectsOrderExceedingPositionLimit() throws Exception {
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-big", "SELL", "1", "200")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value(org.hamcrest.Matchers.containsString("position")));
+    }
+
+    @Test
+    void rejectsOrderExceedingOpenNotional() throws Exception {
+        // First buy order consumes the max open notional (10 * 50000 = 500000).
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-big", "BUY", "50000", "10")))
+                .andExpect(status().isCreated());
+
+        // A second buy would push total open notional above the max cash exposure.
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-more", "BUY", "50000", "1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value(org.hamcrest.Matchers.containsString("notional")));
+    }
+
+    @Test
+    void rejectsOrderWithInsufficientCash() throws Exception {
+        // Deplete account 100 by buying 20 BTC from account 200 (20 * 50000 = 1000000).
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-s1", "SELL", "50000", "10").replace("\"accountId\":100", "\"accountId\":200")))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-b1", "BUY", "50000", "10")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-s2", "SELL", "50000", "10").replace("\"accountId\":100", "\"accountId\":200")))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-b2", "BUY", "50000", "10")))
+                .andExpect(status().isOk());
+
+        // Account 100 now has zero cash; the next buy is rejected.
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(limitOrder("cid-broke", "BUY", "50000", "1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value(org.hamcrest.Matchers.containsString("cash")));
+    }
 }

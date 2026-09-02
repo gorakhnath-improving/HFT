@@ -4,9 +4,57 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 6: Phase 6 — Risk Engine
+
+**Phase:** 5 → 6 (done)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md`, `README.md` for Phase 6.
+- Added `finex-risk` Maven module and wired it into the parent reactor before `finex-api`;
+  `finex-api` depends on `finex-risk`.
+- Implemented baseline pre-trade risk engine in `finex-risk`:
+  - `RiskConfig` with size, notional, position, cash exposure, collar, and rate-limit limits.
+  - `AccountRiskState` tracking cash, position, cash/position reservations for open orders,
+    and a sliding window of order timestamps.
+  - `RiskResult` accepted/rejected with reason.
+  - `RiskEngine` performing size, notional, collar, projected-position, cash-exposure,
+    and rate-limit checks. Validates `LIMIT` and `MARKET` orders; reserves cash (BUY) and
+    projected position (BUY/SELL) on acceptance.
+  - `RiskEngineTest` (10 tests) covering acceptance, size, notional, cash, position,
+    collar, market-without-last-trade, trade/cancel reservation lifecycle, and rate limit.
+- Integrated `RiskEngine` into `finex-api` `OrderService`:
+  - Per-symbol `lastTradePrice` map.
+  - Per-account in-memory `AccountRiskState` map with default cash and position.
+  - Pre-trade validation before `MatchingEngine.placeOrder`; rejects orders by throwing
+    `OrderRejectedException` carrying a rejected `Order` and reason.
+  - Updates buyer/seller cash and positions and releases reservations on every `Trade`.
+  - Releases reservations on cancel.
+- Added `Order.rejected(Instant)` and `OrderRejectedException`; `OrderResponse` now includes
+  an optional `rejectionReason`.
+- `GlobalExceptionHandler` returns `OrderResponse` with `status=REJECTED` for
+  `OrderRejectedException`.
+- Expanded `OrderControllerTest` to 10 tests, adding rejection cases for price collar,
+  position limit, total open notional / cash exposure, and insufficient cash.
+- Added ADR-005 documenting the in-memory, reservation-based risk-engine baseline.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS: `RiskEngineTest` 10/10, `OrderControllerTest` 10/10,
+  `MatchingEngineTest` 15/15, `OrderBookTest` 10/10, `InstrumentTest` 15/15,
+  `HealthControllerTest` 1/1.
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 6 work.
+- Start Phase 7 — Market Data (BOOK_UPDATE/TRADE/EXECUTION events, snapshot + incremental,
+  async publication) or choose another phase.
+
+---
+
 ## 2026-09-02 — Session 5: Phase 5 — REST/API Layer
 
-**Phase:** 4 → 5 (in progress)
+**Phase:** 4 → 5 (done)
 
 **Done:**
 - Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md` for Phase 5.

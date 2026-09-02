@@ -11,23 +11,39 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Service;
 
 import com.finex.common.domain.Order;
+import com.finex.common.domain.Trade;
 import com.finex.common.domain.enums.OrderStatus;
 import com.finex.common.domain.enums.OrderType;
+import com.finex.common.domain.enums.Side;
 import com.finex.matching.MatchResult;
 import com.finex.matching.MatchingEngine;
 import com.finex.orderbook.OrderBook;
+import com.finex.risk.AccountRiskState;
+import com.finex.risk.RiskConfig;
+import com.finex.risk.RiskEngine;
+import com.finex.risk.RiskResult;
 
 /**
  * Service that owns per-symbol {@link MatchingEngine} instances and exposes the trading
  * surface to the REST layer. In the baseline, engines are created lazily for any symbol
  * that receives an order; persistence of instruments/accounts is Phase 2/11+.
+ *
+ * <p>Phase 6 adds a baseline in-memory {@link RiskEngine} that validates every order before
+ * it reaches the matching engine and updates account cash/positions when trades occur.
  */
 @Service
 public class OrderService {
 
+    private static final BigDecimal DEFAULT_INITIAL_CASH = new BigDecimal("1000000");
+    private static final BigDecimal DEFAULT_INITIAL_POSITION = BigDecimal.ZERO;
+
     private final Map<String, MatchingEngine> engines = new ConcurrentHashMap<>();
     private final Map<Long, Order> orderCache = new ConcurrentHashMap<>();
     private final AtomicLong orderSequence = new AtomicLong(0);
+
+    private final RiskEngine riskEngine = new RiskEngine(RiskConfig.defaults());
+    private final Map<Long, AccountRiskState> riskStates = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> lastTradePrices = new ConcurrentHashMap<>();
 
     public MatchResult submitOrder(OrderRequest request, Instant now) {
         validateRequest(request);
@@ -50,8 +66,20 @@ public class OrderService {
                 now,
                 OrderStatus.OPEN);
 
+        AccountRiskState state = riskState(request.accountId());
+        RiskResult riskResult = riskEngine.validate(order, state, now, lastTradePrices.get(request.symbol()));
+        if (!riskResult.accepted()) {
+            Order rejected = order.rejected(now);
+            orderCache.put(orderId, rejected);
+            throw new OrderRejectedException(rejected, riskResult.reason());
+        }
+
         MatchResult result = engine.placeOrder(order, now);
         orderCache.put(orderId, result.order());
+        for (Trade trade : result.trades()) {
+            lastTradePrices.put(request.symbol(), trade.price());
+            applyTradeToRiskState(trade);
+        }
         return result;
     }
 
@@ -77,7 +105,12 @@ public class OrderService {
             if (live.isPresent()) {
                 boolean cancelled = engine.cancelOrder(orderId);
                 if (cancelled) {
-                    orderCache.put(orderId, live.get().cancelled(now));
+                    Order cancelledOrder = live.get().cancelled(now);
+                    orderCache.put(orderId, cancelledOrder);
+                    AccountRiskState state = riskStates.get(cancelledOrder.accountId());
+                    if (state != null) {
+                        riskEngine.onCancel(state, orderId);
+                    }
                 }
                 return cancelled;
             }
@@ -92,6 +125,18 @@ public class OrderService {
         }
         OrderBook book = engine.orderBook();
         return Optional.of(OrderBookView.from(symbol, book.getBids(), book.getAsks()));
+    }
+
+    private AccountRiskState riskState(long accountId) {
+        return riskStates.computeIfAbsent(accountId, id ->
+                new AccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION, riskEngine.config()));
+    }
+
+    private void applyTradeToRiskState(Trade trade) {
+        AccountRiskState buyer = riskState(trade.buyerAccountId());
+        AccountRiskState seller = riskState(trade.sellerAccountId());
+        riskEngine.onTrade(buyer, trade.buyOrderId(), trade, Side.BUY);
+        riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
     }
 
     private static void validateRequest(OrderRequest request) {

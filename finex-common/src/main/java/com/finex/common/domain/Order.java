@@ -119,4 +119,23 @@ public record Order(
                 cancelledAt,
                 OrderStatus.CANCELLED);
     }
+
+    /**
+     * Returns a copy of this order in a rejected state with no remaining quantity.
+     */
+    public Order rejected(Instant rejectedAt) {
+        return new Order(
+                orderId,
+                clientOrderId,
+                accountId,
+                symbol,
+                side,
+                type,
+                price,
+                quantity,
+                BigDecimal.ZERO,
+                sequence,
+                rejectedAt,
+                OrderStatus.REJECTED);
+    }
 }

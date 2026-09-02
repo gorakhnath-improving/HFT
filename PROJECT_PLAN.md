@@ -129,7 +129,28 @@ full/partial fill scenario.
 
 ## Phase 6 — Risk Engine
 **Goal:** Pre-trade risk checks (size, notional, collar, position, exposure, rate limit).
-**Dependencies:** Phase 2, 4.
+**Dependencies:** Phase 2, 4, 5.
+**Status:** Done.
+**Tasks:**
+- [x] New `finex-risk` Maven module depending on `finex-common` and `finex-matching-engine`
+- [x] `RiskConfig` (size, notional, position, cash, collar, rate-limit limits)
+- [x] `AccountRiskState` (cash, position, reservations, order timestamps)
+- [x] `RiskResult` (accepted/rejected with reason)
+- [x] `RiskEngine` validating size, notional, collar, position, cash, and rate limit
+- [x] Reservation of cash (BUY) and projected position on accepted orders
+- [x] Update cash/position and release reservations on trades and cancels
+- [x] `RiskEngineTest` covering each check and rejection reason
+- [x] Integrate `RiskEngine` into `finex-api` `OrderService` (pre-trade validation)
+- [x] Update `OrderControllerTest` with rejection cases
+- [x] Update `README.md`
+**Acceptance criteria:**
+- [x] `mvn test` passes including risk engine and updated controller tests
+- [x] Orders exceeding configured limits are rejected with `OrderStatus.REJECTED`
+- [x] Trades correctly update account cash/positions and release reservations
+- [x] Cancellations release remaining reservations
+**Tests:** `RiskEngineTest` (10) + updated `OrderControllerTest` (10).
+**Benchmarks:** None.
+**Deliverables:** `finex-risk` module, risk-integrated `OrderService`.
 
 ## Phase 7 — Market Data
 **Goal:** BOOK_UPDATE/TRADE/EXECUTION events, snapshot + incremental, async publication.

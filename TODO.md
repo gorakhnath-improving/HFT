@@ -21,15 +21,20 @@ full roadmap.
 
 ## Phase 5 — REST/API Layer (done)
 
-- [x] Add `finex-matching-engine` dependency to `finex-api`
-- [x] Expose `OrderBook.findOrder(long)`
-- [x] `OrderService`, DTOs, `OrderController`
-- [x] `OrderControllerTest` (7 tests) with `MockMvc`
+- [x] Commit (`27a7ab1`)
+
+## Phase 6 — Risk Engine (done)
+
+- [x] New `finex-risk` module
+- [x] `RiskEngine`, `RiskConfig`, `AccountRiskState`, `RiskResult`
+- [x] `RiskEngineTest`
+- [x] Integrate into `OrderService` / `OrderController`
+- [x] Update `OrderControllerTest` with risk rejection cases
 - [x] Update `README.md`
 - [x] Build + `mvn test` green
-- [ ] Commit Phase 5 work
+- [ ] Commit Phase 6 work
 
-## Phase 6 — Risk Engine (next)
+## Phase 7 — Market Data (next)
 
-Goal: Pre-trade risk checks (size, notional, collar, position, exposure, rate limit).
-Dependencies: Phase 2, 4, 5 (done).
+Goal: BOOK_UPDATE/TRADE/EXECUTION events, snapshot + incremental, async publication.
+Dependencies: Phase 4, 5, 6 (done).

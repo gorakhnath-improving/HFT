@@ -189,3 +189,48 @@ Concurrency and symbol sharding are explicit future phases (10, 25).
   new order will be used until a dedicated modify path is needed.
 - Event sourcing / replay infrastructure (Phase 9/15) can record `placeOrder` commands and
   `MatchResult` outputs and replay them to reconstruct state.
+
+---
+
+## ADR-005: Risk engine — in-memory, per-account, reservation-based baseline
+
+**Context:** Phase 6 requires pre-trade risk checks (size, notional, collar, position,
+exposure, rate limit) before an order reaches the matching engine. The system does not yet
+have a ledger or settlement service (Phase 11), so the risk engine must maintain enough
+account state to enforce these limits without full accounting.
+
+**Options:**
+- Validate only the current order with static config, ignoring cross-order/account state:
+  simple, but allows multiple resting orders to collectively exceed cash or position limits.
+- Maintain per-account in-memory `AccountRiskState` with cash/position and reservations for
+  open orders, updating on trades and cancels: correct for a single node, more complex.
+- Integrate a full ledger/portfolio service now: premature; ledger and positions are later
+  phases and would couple risk to persistence.
+
+**Decision:** Implement `finex-risk` with a stateless `RiskEngine` that operates on a mutable
+`AccountRiskState` owned by `OrderService`. Accepted orders reserve cash (BUY) and projected
+position (BUY/SELL); trades reduce reservations and update cash/position; cancellations
+release remaining reservations. All state is in-memory in the baseline.
+
+**Reason:** This is the smallest design that prevents cross-order limit violations (e.g.
+cash double-spend across multiple open buy orders or position over-extension across sells)
+without building a full ledger. The `RiskEngine` is deterministic and testable in isolation;
+`OrderService` owns the lifecycle and state maps.
+
+**Tradeoffs:**
+- In-memory state is lost on restart. Event sourcing/replay (Phase 9) and persistence
+  (Phase 11) will eventually make this durable.
+- `AccountRiskState` uses `BigDecimal` maps; this is not optimized for the HFT hot path but
+  is correct for the baseline.
+- Market-order risk uses the last trade price as a notional estimate; a more conservative
+  approach (best ask/bid) can be added when order-book depth is exposed to risk.
+
+**Consequences:**
+- New `finex-risk` module between `finex-matching-engine` and `finex-api`.
+- `OrderService` calls `RiskEngine.validate(...)` before `MatchingEngine.placeOrder(...)` and
+  throws `OrderRejectedException` on rejection, producing an `OrderResponse` with
+  `status=REJECTED`.
+- `OrderService` tracks `lastTradePrice` per symbol and updates `AccountRiskState` on each
+  `Trade` and cancel.
+- Default config and initial cash are hard-coded for the baseline; they will move to
+  configuration/account profiles once the account service is built.
