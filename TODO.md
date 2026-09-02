@@ -1,28 +1,18 @@
 # TODO — Active Task Queue
 
-## Phase 7 — Market Data (done)
+## Phase 9 — Event Architecture (done)
 
-- [x] `finex-market-data` module and integration
+- [x] `finex-event-log` module, event store, replay
 
-## Phase 8 — Binary Protocol (done)
-
-- [x] `finex-protocol` module and binary codec
-
-## Phase 9 — Event Architecture (in progress)
-
-Goal: Append-only event log powering replay.
-- [ ] Create `finex-event-log` Maven module
-- [ ] Define `Event` record (id, timestamp, type, payload bytes)
-- [ ] `EventStore` interface: `append(Event)`, `readAll()`, `replay(ReplayHandler)`
-- [ ] In-memory `InMemoryEventStore` baseline
-- [ ] Wire `OrderService` to append `SubmitOrder`, `CancelOrder`, `MatchResult` events
-- [ ] `ReplayEngine` reconstructs `OrderService` state from event log
-- [ ] `EventStoreTest` / `ReplayTest`
-- [ ] `mvn test` green + commit
-
-## Phase 10 — Symbol Sharding (pending)
+## Phase 10 — Symbol Sharding (in progress)
 
 Goal: Multiple independent matching engine shards; scaling measurements.
+- [ ] Decide: shard abstraction in `finex-api` vs new `finex-shard` module
+- [ ] `SymbolShardRouter` mapping symbol -> shard id (consistent hash / modulo)
+- [ ] `EngineShard` owning one `MatchingEngine`, one `OrderService`-equivalent state
+- [ ] `OrderService` routes submit/cancel to shard and aggregates book snapshots
+- [ ] Sharding correctness test (orders for different symbols go to different engines)
+- [ ] `mvn test` green + commit
 
 ## Phase 11 — Ledger (pending)
 

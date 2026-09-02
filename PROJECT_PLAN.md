@@ -192,27 +192,42 @@ full/partial fill scenario.
 ## Phase 9 — Event Architecture
 **Goal:** Append-only event log powering replay.
 **Dependencies:** Phase 4, 7, 8.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-event-log` Maven module depending on `finex-common`, `finex-matching-engine`, `finex-protocol`
-- [ ] `Event` record (id, timestamp, type, payload bytes)
-- [ ] `EventStore` interface: `append(Event)`, `readAll()`, `replay(EventHandler)`
-- [ ] In-memory `InMemoryEventStore` baseline
-- [ ] Wire `OrderService` to append `OrderSubmitted` / `OrderCancelled` / `OrderMatched` events
-- [ ] `ReplayEngine` reconstructs order book, risk, and market-data state from events
-- [ ] `EventStoreTest` and `ReplayTest`
+- [x] New `finex-event-log` Maven module depending on `finex-common`, `finex-protocol`
+- [x] `Event` record (id, timestamp, type, payload bytes)
+- [x] `EventStore` interface: `append(Event)`, `readAll()`
+- [x] In-memory `InMemoryEventStore` baseline
+- [x] `CommandSerializer` encodes `SubmitOrderCommand` / `CancelOrderCommand` using `BinaryCodec`
+- [x] `CommandHandler` interface for replay
+- [x] `OrderService` implements `CommandHandler`, appends command events, exposes `eventStore()`
+- [x] `ReplayEngine` reconstructs `OrderService` state from events
+- [x] `EventStoreTest`, `CommandSerializerTest`, `OrderServiceReplayTest`
 **Acceptance criteria:**
-- [ ] `mvn test` passes including event-log and replay tests
-- [ ] Running the same command sequence twice via replay produces identical final state
-- [ ] Event store is append-only; no updates or deletes
-**Tests:** `EventStoreTest`, `ReplayTest`.
+- [x] `mvn test` passes including event-log and replay tests
+- [x] Running the same command sequence twice via replay produces identical final state
+- [x] Event store is append-only; no updates or deletes
+**Tests:** `EventStoreTest`, `CommandSerializerTest`, `OrderServiceReplayTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-event-log` module, replayable `OrderService`.
 
 ## Phase 10 — Symbol Sharding
 **Goal:** Multiple independent matching engine shards; scaling measurements.
-**Dependencies:** Phase 4, 25 (concurrency model).
-**Status:** Not started.
+**Dependencies:** Phase 4, 9.
+**Status:** In progress.
+**Tasks:**
+- [ ] `SymbolShardRouter` mapping symbol -> shard id (consistent hash / modulo)
+- [ ] `EngineShard` abstraction: one `MatchingEngine` + per-symbol state
+- [ ] `OrderService` routes by symbol and aggregates cross-shard book snapshots if needed
+- [ ] Sharding correctness test (different symbols on different engines, same symbol on same engine)
+- [ ] `mvn test` green
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Orders for different symbols are routed to independent matching engines
+- [ ] Replay still works with sharded engines
+**Tests:** `SymbolShardRouterTest`, `OrderService` sharding test.
+**Benchmarks:** None.
+**Deliverables:** Symbol sharding in `OrderService` or `finex-shard` module.
 
 ## Phase 11 — Ledger
 **Goal:** Double-entry ledger, immutable entries, debits == credits invariant.
