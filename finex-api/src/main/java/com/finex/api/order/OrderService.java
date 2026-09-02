@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.stereotype.Service;
 
-import com.finex.clearing.ClearingResult;
 import com.finex.clearing.ClearingService;
 import com.finex.common.domain.Order;
 import com.finex.common.domain.Trade;
@@ -24,10 +23,8 @@ import com.finex.eventlog.EventStore;
 import com.finex.eventlog.InMemoryEventStore;
 import com.finex.eventlog.ReplayEngine;
 import com.finex.eventlog.SubmitOrderCommand;
-import com.finex.ledger.DebitCredit;
 import com.finex.ledger.InMemoryLedger;
 import com.finex.ledger.Ledger;
-import com.finex.ledger.LedgerEntry;
 import com.finex.marketdata.BookUpdate;
 import com.finex.marketdata.BookUpdateFactory;
 import com.finex.marketdata.ExecutionEvent;
@@ -43,6 +40,7 @@ import com.finex.risk.AccountRiskState;
 import com.finex.risk.RiskConfig;
 import com.finex.risk.RiskEngine;
 import com.finex.risk.RiskResult;
+import com.finex.settlement.SettlementService;
 import com.finex.shard.EngineShard;
 import com.finex.shard.ShardCoordinator;
 
@@ -89,6 +87,7 @@ public class OrderService implements CommandHandler {
     private final Ledger ledger = new InMemoryLedger();
     private final PortfolioService portfolioService = new PortfolioService();
     private final ClearingService clearingService = new ClearingService();
+    private final SettlementService settlementService = new SettlementService(clearingService, ledger, portfolioService);
 
     public OrderService() {
         this(new InMemoryEventStore(), 1);
@@ -160,12 +159,7 @@ public class OrderService implements CommandHandler {
         for (Trade trade : result.trades()) {
             lastTradePrices.put(command.symbol(), trade.price());
             applyTradeToRiskState(trade);
-            ClearingResult clearing = clearingService.clear(trade, command.side());
-            postTradeToLedger(trade, clearing, now);
-            portfolioService.applyTrade(trade, trade.price());
-            portfolioService.applyCashDelta(trade.buyerAccountId(), clearing.buyerCashDelta());
-            portfolioService.applyCashDelta(trade.sellerAccountId(), clearing.sellerCashDelta());
-            portfolioService.markToMarket(command.symbol(), trade.price());
+            settlementService.settle(trade, command.side(), now, trade.price());
         }
         publishMatchEvents(command.symbol(), shard, result, now);
         publishBookUpdate(command.symbol(), shard, now);
@@ -279,46 +273,6 @@ public class OrderService implements CommandHandler {
         AccountRiskState seller = riskState(trade.sellerAccountId());
         riskEngine.onTrade(buyer, trade.buyOrderId(), trade, Side.BUY);
         riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
-    }
-
-    private void postTradeToLedger(Trade trade, ClearingResult clearing, Instant now) {
-        String assetBuyer = assetAccount(trade.buyerAccountId(), trade.symbol());
-        String cashBuyer = cashAccount(trade.buyerAccountId());
-        String assetSeller = assetAccount(trade.sellerAccountId(), trade.symbol());
-        String cashSeller = cashAccount(trade.sellerAccountId());
-        String cashCurrency = "USD";
-        String assetCurrency = trade.symbol();
-
-        // Cash leg: seller receives net cash, buyer pays gross cash, fee accrual receives fees.
-        List<LedgerEntry> cashEntries = new java.util.ArrayList<>(3);
-        cashEntries.add(new LedgerEntry(0, now, cashSeller, clearing.sellerCashDelta().abs(), DebitCredit.DEBIT, cashCurrency,
-                "Trade " + trade.tradeId() + " cash received"));
-        cashEntries.add(new LedgerEntry(0, now, cashBuyer, clearing.buyerCashDelta().abs(), DebitCredit.CREDIT, cashCurrency,
-                "Trade " + trade.tradeId() + " cash paid"));
-        if (clearing.feeAccrued().compareTo(BigDecimal.ZERO) > 0) {
-            cashEntries.add(new LedgerEntry(0, now, feeAccount(), clearing.feeAccrued(), DebitCredit.DEBIT, cashCurrency,
-                    "Trade " + trade.tradeId() + " fee accrual"));
-        }
-        ledger.post(cashEntries);
-
-        // Asset leg: buyer receives asset, seller delivers asset.
-        ledger.post(List.of(
-                new LedgerEntry(0, now, assetBuyer, trade.quantity(), DebitCredit.DEBIT, assetCurrency,
-                        "Trade " + trade.tradeId() + " asset received"),
-                new LedgerEntry(0, now, assetSeller, trade.quantity(), DebitCredit.CREDIT, assetCurrency,
-                        "Trade " + trade.tradeId() + " asset delivered")));
-    }
-
-    private static String cashAccount(long accountId) {
-        return "CASH." + accountId;
-    }
-
-    private static String assetAccount(long accountId, String symbol) {
-        return "ASSET." + symbol + "." + accountId;
-    }
-
-    private static String feeAccount() {
-        return "FEE.ACCRUAL";
     }
 
     private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {

@@ -31,6 +31,7 @@
         <module>finex-ledger</module>
         <module>finex-portfolio</module>
         <module>finex-clearing</module>
+        <module>finex-settlement</module>
         <module>finex-api</module>
     </modules>
 
@@ -96,6 +97,11 @@
             <dependency>
                 <groupId>com.finex</groupId>
                 <artifactId>finex-clearing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-settlement</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

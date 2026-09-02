@@ -57,6 +57,10 @@
             <groupId>com.finex</groupId>
             <artifactId>finex-clearing</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.finex</groupId>
+            <artifactId>finex-settlement</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
