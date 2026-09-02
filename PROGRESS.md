@@ -4,6 +4,47 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 4: Phase 4 — Matching Engine
+
+**Phase:** 3 → 4 (in progress)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md` for Phase 4.
+- Added `finex-matching-engine` Maven module, wired into parent `pom.xml` between
+  `finex-order-book` and `finex-api`.
+- Implemented `com.finex.matching.MatchingEngine`:
+  - Per-symbol, single-threaded baseline.
+  - `placeOrder(Order, Instant)` returns `MatchResult` (final order, trades, addedToBook).
+  - Walks opposite side of book from top, matching at resting order's price.
+  - Full and partial fills for both incoming and resting orders using `Order.withFill`.
+  - `Trade` generation with monotonic `tradeSequence` from an internal `AtomicLong`.
+  - Limit price gating; market orders fill until liquidity is exhausted, then cancel
+    the unfilled remainder.
+  - `cancelOrder(long)` delegates to `OrderBook`.
+- Added `MatchingEngineTest` (15 tests) covering full fill, partial incoming fill,
+  partial resting fill, multiple fills across price levels, market order full fill and
+  cancellation, non-marketable limit order resting, buy/sell price gating, same-price
+  time priority, cancellation, wrong-symbol rejection, determinism, and resting-order
+  re-insertion priority.
+- ADR-004: matching engine architecture (single-symbol, single-threaded baseline, caller-
+  supplied `Instant` for determinism).
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS: `MatchingEngineTest` 15/15, `OrderBookTest` 10/10,
+  `InstrumentTest` 15/15, `HealthControllerTest` 1/1.
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 4 work.
+- Start Phase 5 — REST/API Layer: expose `POST /api/v1/orders`, `DELETE /api/v1/orders/{id}`,
+  `GET /api/v1/orders/{id}` over `finex-api`, backed by `MatchingEngine` or a service
+  orchestrator. Need to decide whether to wire the engine directly or introduce an
+  `OrderService` / `Gateway` abstraction.
+
+---
+
 ## 2026-09-02 — Session 3: Phase 3 — Correct Order Book
 
 **Phase:** 2 → 3 (in progress)

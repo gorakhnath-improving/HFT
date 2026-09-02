@@ -22,6 +22,7 @@
     <modules>
         <module>finex-common</module>
         <module>finex-order-book</module>
+        <module>finex-matching-engine</module>
         <module>finex-api</module>
     </modules>
 
@@ -37,6 +38,11 @@
             <dependency>
                 <groupId>com.finex</groupId>
                 <artifactId>finex-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-order-book</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

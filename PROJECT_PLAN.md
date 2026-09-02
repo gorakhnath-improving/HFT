@@ -78,8 +78,29 @@ LedgerAccount, LedgerEntry) as plain domain objects, framework-agnostic where po
 **Deliverables:** `finex-order-book` module, ADR-003.
 
 ## Phase 4 — Matching Engine
-**Goal:** Deterministic price-time-priority matching; full/partial fills; determinism tests.
+**Goal:** Deterministic price-time-priority matching; full/partial fills; `Trade` generation;
+`Order` state updates; determinism tests.
 **Dependencies:** Phase 3.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-matching-engine` Maven module depending on `finex-order-book`
+- [ ] `MatchingEngine` class per symbol, single-threaded baseline
+- [ ] `MatchResult` record with final `Order` state, `List<Trade>`, and `addedToBook` flag
+- [ ] Match incoming order against opposite-side book top using price-time priority
+- [ ] Full and partial fills of both incoming and resting orders
+- [ ] `Trade` generation with deterministic `tradeSequence`
+- [ ] Unfilled LIMIT orders rest; unfilled MARKET orders cancelled
+- [ ] `MatchingEngineTest` covering full/partial/multiple fills, market orders, limit
+      price gating, same-price time priority, and determinism
+**Acceptance criteria:**
+- `mvn test` passes with new matching engine tests
+- Same sequence of orders produces the same trades and final book state
+- BUY matches lowest ask first; SELL matches highest bid first
+- Partially filled resting orders remain in the book with reduced remaining quantity
+**Tests:** `MatchingEngineTest` with full/partial/multiple fill, market, limit, priority,
+and determinism cases.
+**Benchmarks:** None yet.
+**Deliverables:** `finex-matching-engine` module, ADR-004.
 
 ## Phase 5 — REST/API Layer
 **Goal:** Order submit/cancel/query endpoints on top of the matching engine.

@@ -5,33 +5,38 @@ full roadmap.
 
 ## Phase 1 — Repository Bootstrap (done)
 
-- [x] Init git repo, .gitignore
-- [x] Create project memory files
-- [x] Create parent `pom.xml` (Java 25, Spring Boot 4.1.1 BOM, module list)
-- [x] Create `finex-common` module
-- [x] Create `finex-api` module (health endpoint, Flyway, Postgres)
-- [x] `docker-compose.yml` at repo root (postgres, prometheus, grafana)
-- [x] README, docs skeleton
-- [x] Verify build + tests
 - [x] Commit (`ac84774`)
 
 ## Phase 2 — Financial Domain Model (done)
 
-- [x] ADR-002: `BigDecimal` for money/quantity
-- [x] Domain enums and records in `finex-common`
-- [x] 15 unit tests (`InstrumentTest`)
 - [x] Commit (`f975cb9`)
 
 ## Phase 3 — Correct Order Book (done)
 
-- [x] Add `finex-order-book` to parent `pom.xml`
-- [x] Create `finex-order-book` module
-- [x] `OrderBook` class (TreeMap, price-time priority)
-- [x] 10 unit tests (`OrderBookTest`)
-- [x] ADR-003: order book data structure
-- [ ] Commit Phase 3 work
+- [x] Commit (`32a22ca`)
 
-## Phase 4 — Matching Engine (next)
+## Phase 4 — Matching Engine (done)
 
-Goal: Deterministic price-time-priority matching; full/partial fills; `Trade` generation;
-`Order` state updates. Dependencies: Phase 3 (done).
+- [x] Create `finex-matching-engine` module
+- [x] `MatchingEngine` + `MatchResult`
+- [x] 15 unit tests (`MatchingEngineTest`)
+- [x] ADR-004
+- [ ] Commit Phase 4 work
+
+## Phase 5 — REST/API Layer (next)
+
+Goal: Order submit/cancel/query endpoints on top of the matching engine. Dependencies:
+Phase 4 (done).
+
+- [ ] Add `finex-matching-engine` dependency to `finex-api`
+- [ ] `OrderService` / `OrderRequest` / `OrderResponse` DTOs in `finex-api`
+- [ ] `OrderController`:
+  - [ ] `POST /api/v1/orders` — submit
+  - [ ] `DELETE /api/v1/orders/{orderId}` — cancel
+  - [ ] `GET /api/v1/orders/{orderId}` — query (in-memory lookup for now)
+- [ ] Keep a per-symbol `MatchingEngine` map in a simple `@Component`
+- [ ] Validate incoming requests, map to `Order` domain objects
+- [ ] Basic integration tests with `MockMvc` or `HttpClient`
+- [ ] Update `README.md` with API examples
+- [ ] Build + `mvn test` green
+- [ ] Commit
