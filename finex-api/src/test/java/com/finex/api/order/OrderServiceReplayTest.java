@@ -52,5 +52,10 @@ class OrderServiceReplayTest {
 
         assertThat(replayed.getOrder(2L)).isEqualTo(original.getOrder(2L));
         assertThat(replayed.getOrder(3L)).isEqualTo(original.getOrder(3L));
+
+        // Phase 15: verify ledger and portfolio are also reconstructed identically.
+        assertThat(replayed.ledger().entries()).isEqualTo(original.ledger().entries());
+        assertThat(replayed.portfolio(100L)).isEqualTo(original.portfolio(100L));
+        assertThat(replayed.portfolio(200L)).isEqualTo(original.portfolio(200L));
     }
 }
