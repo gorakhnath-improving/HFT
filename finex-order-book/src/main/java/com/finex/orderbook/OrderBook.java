@@ -143,6 +143,14 @@ public class OrderBook {
     }
 
     /**
+     * Returns the order currently resting in the book with the given id, or empty if it
+     * has been filled or cancelled.
+     */
+    public Optional<Order> findOrder(long orderId) {
+        return Optional.ofNullable(orderById.get(orderId));
+    }
+
+    /**
      * Returns a flat view of all bids in priority order (highest price first, then
      * earliest sequence within a price).
      */

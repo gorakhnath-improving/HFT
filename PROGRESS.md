@@ -4,6 +4,51 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 5: Phase 5 — REST/API Layer
+
+**Phase:** 4 → 5 (in progress)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md` for Phase 5.
+- Added `finex-matching-engine` dependency to `finex-api/pom.xml` and managed it in parent
+  `pom.xml`.
+- Exposed `OrderBook.findOrder(long)` for accurate live order state lookup.
+- Implemented `com.finex.api.order.OrderService`:
+  - Per-symbol `MatchingEngine` map (auto-created on first order for a symbol).
+  - Global `AtomicLong` order/sequence generator.
+  - In-memory `Map<Long, Order>` cache with fallback to `OrderBook.findOrder`.
+  - `submitOrder`, `cancelOrder`, `getOrder`, `getOrderBook`.
+- DTOs in `finex-api`: `OrderRequest`, `OrderResponse`, `TradeView`, `OrderBookView`.
+- `com.finex.api.order.OrderController`:
+  - `POST /api/v1/orders` — submit and match
+  - `DELETE /api/v1/orders/{orderId}` — cancel
+  - `GET /api/v1/orders/{orderId}` — query
+  - `GET /api/v1/order-books/{symbol}` — snapshot
+- `com.finex.api.GlobalExceptionHandler` mapping `IllegalArgumentException` to 400.
+- Validation in `OrderService` and `OrderController` for positive quantity, LIMIT price,
+  MARKET price absence, and non-null enums/symbol.
+- Added `spring-boot-starter-webmvc-test` dependency for Spring Boot 4 `WebMvcTest` and
+  `MockMvc` support.
+- `OrderControllerTest` (7 tests) using `@WebMvcTest`, `@Import` of `OrderService` and
+  `GlobalExceptionHandler`, and `@DirtiesContext` to isolate `OrderService` state.
+  Covered: submit and rest, full match with trade, query, cancel, book snapshot,
+  validation rejection.
+- Updated `README.md` with curl examples for the trading API.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS: `OrderControllerTest` 7/7, `MatchingEngineTest` 15/15,
+  `OrderBookTest` 10/10, `InstrumentTest` 15/15, `HealthControllerTest` 1/1.
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 5 work.
+- Start Phase 6 — Risk Engine or choose another phase (Market Data, Binary Protocol, Event
+  Architecture, etc.).
+
+---
+
 ## 2026-09-02 — Session 4: Phase 4 — Matching Engine
 
 **Phase:** 3 → 4 (in progress)

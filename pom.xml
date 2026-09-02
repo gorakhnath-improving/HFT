@@ -45,6 +45,11 @@
                 <artifactId>finex-order-book</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-matching-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

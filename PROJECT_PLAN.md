@@ -81,22 +81,22 @@ LedgerAccount, LedgerEntry) as plain domain objects, framework-agnostic where po
 **Goal:** Deterministic price-time-priority matching; full/partial fills; `Trade` generation;
 `Order` state updates; determinism tests.
 **Dependencies:** Phase 3.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-matching-engine` Maven module depending on `finex-order-book`
-- [ ] `MatchingEngine` class per symbol, single-threaded baseline
-- [ ] `MatchResult` record with final `Order` state, `List<Trade>`, and `addedToBook` flag
-- [ ] Match incoming order against opposite-side book top using price-time priority
-- [ ] Full and partial fills of both incoming and resting orders
-- [ ] `Trade` generation with deterministic `tradeSequence`
-- [ ] Unfilled LIMIT orders rest; unfilled MARKET orders cancelled
-- [ ] `MatchingEngineTest` covering full/partial/multiple fills, market orders, limit
+- [x] New `finex-matching-engine` Maven module depending on `finex-order-book`
+- [x] `MatchingEngine` class per symbol, single-threaded baseline
+- [x] `MatchResult` record with final `Order` state, `List<Trade>`, and `addedToBook` flag
+- [x] Match incoming order against opposite-side book top using price-time priority
+- [x] Full and partial fills of both incoming and resting orders
+- [x] `Trade` generation with deterministic `tradeSequence`
+- [x] Unfilled LIMIT orders rest; unfilled MARKET orders cancelled
+- [x] `MatchingEngineTest` covering full/partial/multiple fills, market orders, limit
       price gating, same-price time priority, and determinism
 **Acceptance criteria:**
-- `mvn test` passes with new matching engine tests
-- Same sequence of orders produces the same trades and final book state
-- BUY matches lowest ask first; SELL matches highest bid first
-- Partially filled resting orders remain in the book with reduced remaining quantity
+- [x] `mvn test` passes with new matching engine tests (15/15)
+- [x] Same sequence of orders produces the same trades and final book state
+- [x] BUY matches lowest ask first; SELL matches highest bid first
+- [x] Partially filled resting orders remain in the book with reduced remaining quantity
 **Tests:** `MatchingEngineTest` with full/partial/multiple fill, market, limit, priority,
 and determinism cases.
 **Benchmarks:** None yet.
@@ -105,6 +105,27 @@ and determinism cases.
 ## Phase 5 — REST/API Layer
 **Goal:** Order submit/cancel/query endpoints on top of the matching engine.
 **Dependencies:** Phase 4.
+**Status:** Done.
+**Tasks:**
+- [x] Add `finex-matching-engine` dependency to `finex-api`
+- [x] Expose `OrderBook.findOrder(long)` for accurate order state lookup
+- [x] `OrderService` per-symbol `MatchingEngine` map, global order sequence, in-memory cache
+- [x] DTOs: `OrderRequest`, `OrderResponse`, `TradeView`, `OrderBookView`
+- [x] `OrderController` with `POST /api/v1/orders`, `DELETE /api/v1/orders/{orderId}`,
+      `GET /api/v1/orders/{orderId}`, `GET /api/v1/order-books/{symbol}`
+- [x] Request validation (positive quantity, LIMIT price required, valid enums)
+- [x] `OrderControllerTest` with `MockMvc` (no database)
+- [x] Update `README.md` with curl examples
+**Acceptance criteria:**
+- [x] `mvn test` passes including new controller tests (7/7)
+- [x] `POST /api/v1/orders` creates and matches orders, returns resulting order + trades
+- [x] `GET /api/v1/orders/{orderId}` returns current state
+- [x] `DELETE /api/v1/orders/{orderId}` cancels an open order
+- [x] `GET /api/v1/order-books/{symbol}` returns a snapshot
+**Tests:** `OrderControllerTest` covering submit, cancel, query, book snapshot, and a
+full/partial fill scenario.
+**Benchmarks:** None.
+**Deliverables:** Order REST API in `finex-api`.
 
 ## Phase 6 — Risk Engine
 **Goal:** Pre-trade risk checks (size, notional, collar, position, exposure, rate limit).
