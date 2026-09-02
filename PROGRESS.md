@@ -1,0 +1,48 @@
+# PROGRESS LOG
+
+Reverse-chronological. One entry per session/significant milestone.
+
+---
+
+## 2026-09-02 — Session 1: Project bootstrap
+
+**Phase:** 0 → 1 (in progress)
+
+**Done:**
+- Read Master Plan (`../Master Plan.md`), extracted phased roadmap into `PROJECT_PLAN.md`.
+- Decided: Maven multi-module build, Docker Compose for infra (Postgres/Prometheus/Grafana).
+- `git init`, `.gitignore` created.
+- Project memory files created: PROJECT_PLAN.md, PROGRESS.md (this file), TODO.md,
+  AGENT_CONTEXT.md, DESIGN_DECISIONS.md.
+- Environment verified: Java 25.0.2, Maven 3.9.16, Docker 29.4.2, Docker Compose v5.1.3.
+
+- Scaffolded Maven parent POM (Java 25, Spring Boot 4.1.1 BOM) + `finex-common` (empty
+  shared module) + `finex-api` (Spring Boot app) modules.
+- `docker-compose.yml`: postgres (16-alpine), prometheus (v3.13.2), grafana (13.0.7),
+  with Prometheus scrape config and a provisioned Grafana datasource under `docker/`.
+- `finex-api`: `GET /api/v1/health` (checks DataSource connectivity), Flyway migration
+  `V1__init.sql` (placeholder bootstrap marker table), `application.yml` reading DB
+  connection from env vars with localhost defaults, actuator + prometheus endpoint exposed.
+- Test: `HealthControllerTest` — Testcontainers-backed Postgres, full Spring context,
+  asserts `/api/v1/health` returns 200 with `db: UP`. (Note: JUnit test classes must be
+  named `*Test`/`Test*`, not `*IT`, for the default Surefire include pattern to pick them
+  up — no Failsafe plugin configured yet.)
+- `docs/` skeleton created (ARCHITECTURE.md, PROTOCOL.md, FINANCIAL_MODEL.md,
+  performance/{BENCHMARKS,EXPERIMENTS,OPTIMIZATIONS}.md) — placeholders only.
+- README.md with build/run/test instructions.
+- ADR-000 (Maven) and ADR-001 (Docker infra, native app for now) recorded.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS (all modules).
+- `mvn test` — SUCCESS, 1 test, real Testcontainers Postgres + Flyway + Spring context.
+- `docker compose up -d postgres` (note: local machine's default 5432 was already bound by
+  an unrelated container, used `DB_PORT=5442` override) + `mvn -pl finex-api
+  spring-boot:run` + `curl localhost:8080/api/v1/health` → `{"status":"UP","db":"UP"}`.
+- Stopped app process and `docker compose down` afterward; environment left clean.
+
+**Blockers:** None. Note for future sessions: port 5432 may be occupied by unrelated local
+Docker containers on this machine — pass `DB_PORT=<free-port>` to `docker compose up` if so.
+
+**Next session should:**
+- `git add -A && git commit` this bootstrap (not yet committed as of writing this entry).
+- Start Phase 2 (Financial Domain Model): expand atomic tasks in TODO.md, then implement.
