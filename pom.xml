@@ -25,6 +25,7 @@
         <module>finex-matching-engine</module>
         <module>finex-risk</module>
         <module>finex-market-data</module>
+        <module>finex-protocol</module>
         <module>finex-api</module>
     </modules>
 
@@ -60,6 +61,11 @@
             <dependency>
                 <groupId>com.finex</groupId>
                 <artifactId>finex-market-data</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.finex</groupId>
+                <artifactId>finex-protocol</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

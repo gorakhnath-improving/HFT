@@ -2,24 +2,23 @@
 
 ## Phase 7 — Market Data (done)
 
-- [x] `finex-market-data` module
-- [x] Events and publisher wired into `OrderService`
-- [x] Tests + commit
+- [x] `finex-market-data` module and integration
 
-## Phase 8 — Binary Protocol (in progress)
+## Phase 8 — Binary Protocol (done)
 
-Goal: Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
-- [ ] Create `finex-protocol` Maven module
-- [ ] Define message types and `ProtocolMessage` sealed hierarchy
-- [ ] Implement `BinaryCodec` (encode/decode to/from `ByteBuffer`)
-- [ ] `NEW_ORDER`, `CANCEL_ORDER`, `MODIFY_ORDER` request messages
-- [ ] `ORDER_ACK`, `ORDER_REJECTED`, `EXECUTION` response messages
-- [ ] `ProtocolCodecTest`
-- [ ] `mvn test` green + commit
+- [x] `finex-protocol` module and binary codec
 
-## Phase 9 — Event Architecture (pending)
+## Phase 9 — Event Architecture (in progress)
 
 Goal: Append-only event log powering replay.
+- [ ] Create `finex-event-log` Maven module
+- [ ] Define `Event` record (id, timestamp, type, payload bytes)
+- [ ] `EventStore` interface: `append(Event)`, `readAll()`, `replay(ReplayHandler)`
+- [ ] In-memory `InMemoryEventStore` baseline
+- [ ] Wire `OrderService` to append `SubmitOrder`, `CancelOrder`, `MatchResult` events
+- [ ] `ReplayEngine` reconstructs `OrderService` state from event log
+- [ ] `EventStoreTest` / `ReplayTest`
+- [ ] `mvn test` green + commit
 
 ## Phase 10 — Symbol Sharding (pending)
 

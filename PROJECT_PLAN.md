@@ -176,29 +176,38 @@ full/partial fill scenario.
 ## Phase 8 — Binary Protocol
 **Goal:** Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
 **Dependencies:** Phase 4, 5, 6, 7.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-protocol` Maven module depending on `finex-common`
-- [ ] `ProtocolMessage` sealed hierarchy: `NewOrder`, `CancelOrder`, `ModifyOrder`, `OrderAck`, `OrderRejected`, `ExecutionReport`
-- [ ] `BinaryCodec` with `encode`/`decode` using `ByteBuffer`
-- [ ] Message framing: 4-byte length header + payload
-- [ ] Test round-trip encoding for each message type
+- [x] New `finex-protocol` Maven module depending on `finex-common`
+- [x] `ProtocolMessage` sealed hierarchy for NEW_ORDER/CANCEL/MODIFY/ACK/REJECT/EXECUTION
+- [x] `BinaryCodec` with 4-byte length framing, UTF-8 string fields, plain `BigDecimal` payloads
+- [x] `BinaryCodecTest` round-tripping all message types including null price
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Codec round-trips all message types without allocation overhead beyond necessary
+- [x] `mvn test` passes
+- [x] Codec round-trips all message types without allocation overhead beyond necessary
 **Tests:** `BinaryCodecTest`.
 **Benchmarks:** None.
 **Deliverables:** `finex-protocol` module with binary codec.
 
-## Phase 8 — Binary Protocol
-**Goal:** Compact binary trading protocol (NEW_ORDER/CANCEL/MODIFY, ACK/REJECT/EXECUTION).
-**Dependencies:** Phase 4, 5, 6, 7.
-**Status:** Not started.
-
 ## Phase 9 — Event Architecture
 **Goal:** Append-only event log powering replay.
-**Dependencies:** Phase 4, 7.
-**Status:** Not started.
+**Dependencies:** Phase 4, 7, 8.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-event-log` Maven module depending on `finex-common`, `finex-matching-engine`, `finex-protocol`
+- [ ] `Event` record (id, timestamp, type, payload bytes)
+- [ ] `EventStore` interface: `append(Event)`, `readAll()`, `replay(EventHandler)`
+- [ ] In-memory `InMemoryEventStore` baseline
+- [ ] Wire `OrderService` to append `OrderSubmitted` / `OrderCancelled` / `OrderMatched` events
+- [ ] `ReplayEngine` reconstructs order book, risk, and market-data state from events
+- [ ] `EventStoreTest` and `ReplayTest`
+**Acceptance criteria:**
+- [ ] `mvn test` passes including event-log and replay tests
+- [ ] Running the same command sequence twice via replay produces identical final state
+- [ ] Event store is append-only; no updates or deletes
+**Tests:** `EventStoreTest`, `ReplayTest`.
+**Benchmarks:** None.
+**Deliverables:** `finex-event-log` module, replayable `OrderService`.
 
 ## Phase 10 — Symbol Sharding
 **Goal:** Multiple independent matching engine shards; scaling measurements.

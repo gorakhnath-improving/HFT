@@ -1,20 +1,21 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 8 — Binary Protocol (batched: Phases 7-11 requested)
-**Current task:** Define compact binary trading protocol messages (NEW_ORDER/CANCEL/MODIFY,
-ACK/REJECT/EXECUTION) and a codec.
+**Current phase:** Phase 9 — Event Architecture (batched: Phases 7-11 requested)
+**Current task:** Append-only event log that records commands and results and can replay
+state reconstruction.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
 - `finex-order-book` — `OrderBook`
-- `finex-matching-engine` — `MatchingEngine`, `MatchResult`, `Trade`
+- `finex-matching-engine` — `MatchResult`, `Trade`
 - `finex-risk` — `RiskEngine`
-- `finex-market-data` — `MarketDataPublisher`, `BookUpdate`, `TradeEvent`, `ExecutionEvent`
+- `finex-market-data` — market-data events
+- `finex-protocol` — binary protocol messages and `BinaryCodec`
 - `finex-api` — `OrderService` + `OrderController`
-- (in progress) `finex-protocol` for binary codec
+- (in progress) `finex-event-log` for append-only events and replay
 
 **Completed milestones:**
-- Phases 1-7 committed or in progress (`ac84774` through Phase 7).
+- Phases 1-8 committed or in progress.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs. ADR-000 through ADR-005.
 
@@ -23,9 +24,10 @@ containers from other projects; pass `DB_PORT=<free-port>` when starting `docker
 
 **Current benchmark:** N/A.
 
-**Last successful build:** `mvn test` green after Phase 7 market-data integration.
+**Last successful build:** `mvn test` green after Phase 8 binary codec.
 
-**Next action:** Create `finex-protocol` module with binary message encoding/decoding.
+**Next action:** Create `finex-event-log` module, define `Event` and `EventStore`, and wire
+`OrderService` to append commands/results; implement replay test.
 
 **Important commands:**
 ```bash
