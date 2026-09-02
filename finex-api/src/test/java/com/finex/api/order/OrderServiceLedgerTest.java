@@ -25,15 +25,16 @@ class OrderServiceLedgerTest {
                 "cid-b1", "BTC-USD", Side.BUY, OrderType.LIMIT,
                 new BigDecimal("50000"), new BigDecimal("1"), 100L), NOW);
 
-        // Cash leg: seller cash +50000, buyer cash -50000.
-        assertThat(service.ledger().balance("CASH.200")).isEqualTo(new BigDecimal("50000"));
-        assertThat(service.ledger().balance("CASH.100")).isEqualTo(new BigDecimal("-50000"));
+        // Cash leg: seller cash +50000, buyer cash -50050 (including 0.1% taker fee), fee accrual +50.
+        assertThat(service.ledger().balance("CASH.200")).isEqualByComparingTo(new BigDecimal("50000"));
+        assertThat(service.ledger().balance("CASH.100")).isEqualByComparingTo(new BigDecimal("-50050"));
+        assertThat(service.ledger().balance("FEE.ACCRUAL")).isEqualByComparingTo(new BigDecimal("50"));
 
         // Asset leg: buyer asset +1, seller asset -1.
-        assertThat(service.ledger().balance("ASSET.BTC-USD.100")).isEqualTo(new BigDecimal("1"));
-        assertThat(service.ledger().balance("ASSET.BTC-USD.200")).isEqualTo(new BigDecimal("-1"));
+        assertThat(service.ledger().balance("ASSET.BTC-USD.100")).isEqualByComparingTo(new BigDecimal("1"));
+        assertThat(service.ledger().balance("ASSET.BTC-USD.200")).isEqualByComparingTo(new BigDecimal("-1"));
 
-        // Total ledger entries: 2 postings * 2 entries = 4.
-        assertThat(service.ledger().entries()).hasSize(4);
+        // Total ledger entries: 1 cash posting (3) + 1 asset posting (2) = 5.
+        assertThat(service.ledger().entries()).hasSize(5);
     }
 }

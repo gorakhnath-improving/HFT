@@ -27,14 +27,14 @@ class OrderServicePortfolioTest {
                 new BigDecimal("50000"), new BigDecimal("1"), 100L), NOW);
 
         Portfolio buyer = service.portfolio(100L);
-        assertThat(buyer.cash()).isEqualTo(new BigDecimal("950000"));
+        assertThat(buyer.cash()).isEqualByComparingTo(new BigDecimal("949950")); // 1M - 50k - 50 fee
         assertThat(buyer.positions()).hasSize(1);
-        assertThat(buyer.positions().get(0).quantity()).isEqualTo(new BigDecimal("1"));
-        assertThat(buyer.positions().get(0).avgPrice()).isEqualTo(new BigDecimal("50000"));
-        assertThat(buyer.totalEquity()).isEqualTo(new BigDecimal("950000"));
+        assertThat(buyer.positions().get(0).quantity()).isEqualByComparingTo(new BigDecimal("1"));
+        assertThat(buyer.positions().get(0).avgPrice()).isEqualByComparingTo(new BigDecimal("50000"));
+        assertThat(buyer.totalEquity()).isEqualByComparingTo(new BigDecimal("949950"));
 
         Portfolio seller = service.portfolio(200L);
-        assertThat(seller.cash()).isEqualTo(new BigDecimal("1050000"));
-        assertThat(seller.positions().get(0).quantity()).isEqualTo(new BigDecimal("-1"));
+        assertThat(seller.cash()).isEqualByComparingTo(new BigDecimal("1050000")); // 1M + 50k
+        assertThat(seller.positions().get(0).quantity()).isEqualByComparingTo(new BigDecimal("-1"));
     }
 }

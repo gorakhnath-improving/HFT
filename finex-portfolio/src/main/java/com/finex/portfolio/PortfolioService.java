@@ -20,8 +20,8 @@ public class PortfolioService {
     private final Map<Long, Map<String, Position>> positions = new ConcurrentHashMap<>();
 
     /**
-     * Applies a trade to both the buyer's and seller's portfolios. {@code markPrice} is used
-     * to revalue the resulting position for unrealized P&L (typically the trade price).
+     * Applies the position changes of a trade to both the buyer and seller. Cash is updated
+     * separately via {@link #applyCashDelta} using the net amount from clearing.
      */
     public void applyTrade(Trade trade, BigDecimal markPrice) {
         if (trade == null) {
@@ -31,9 +31,15 @@ public class PortfolioService {
             throw new IllegalArgumentException("markPrice must be positive");
         }
 
-        BigDecimal notional = trade.price().multiply(trade.quantity());
-        update(trade.buyerAccountId(), trade.symbol(), Side.BUY, trade.price(), trade.quantity(), markPrice, notional.negate());
-        update(trade.sellerAccountId(), trade.symbol(), Side.SELL, trade.price(), trade.quantity(), markPrice, notional);
+        updatePosition(trade.buyerAccountId(), trade.symbol(), Side.BUY, trade.price(), trade.quantity(), markPrice);
+        updatePosition(trade.sellerAccountId(), trade.symbol(), Side.SELL, trade.price(), trade.quantity(), markPrice);
+    }
+
+    /**
+     * Applies a net cash delta to an account. Clearing determines the signed amount.
+     */
+    public void applyCashDelta(long accountId, BigDecimal cashDelta) {
+        cash.compute(accountId, (k, v) -> (v == null ? DEFAULT_INITIAL_CASH : v).add(cashDelta));
     }
 
     /**
@@ -64,9 +70,8 @@ public class PortfolioService {
         return new Portfolio(accountId, accountCash, positionList, accountCash.add(unrealized));
     }
 
-    private void update(long accountId, String symbol, Side side, BigDecimal price, BigDecimal quantity,
-                        BigDecimal markPrice, BigDecimal cashDelta) {
-        cash.compute(accountId, (k, v) -> (v == null ? DEFAULT_INITIAL_CASH : v).add(cashDelta));
+    private void updatePosition(long accountId, String symbol, Side side, BigDecimal price, BigDecimal quantity,
+                                BigDecimal markPrice) {
         Map<String, Position> accountPositions = positions.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>());
         Position current = accountPositions.getOrDefault(symbol,
                 new Position(symbol, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));

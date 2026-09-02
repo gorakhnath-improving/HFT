@@ -20,6 +20,8 @@ class PortfolioServiceTest {
                 new BigDecimal("50000"), new BigDecimal("1"), NOW, 100L, 200L, 1L);
 
         service.applyTrade(trade, trade.price());
+        service.applyCashDelta(trade.buyerAccountId(), new BigDecimal("-50000"));
+        service.applyCashDelta(trade.sellerAccountId(), new BigDecimal("50000"));
 
         Portfolio buyer = service.portfolio(100L);
         assertThat(buyer.positions()).hasSize(1);
@@ -40,10 +42,14 @@ class PortfolioServiceTest {
         Trade open = new Trade(1L, 1L, 2L, "BTC-USD",
                 new BigDecimal("50000"), new BigDecimal("1"), NOW, 100L, 200L, 1L);
         service.applyTrade(open, open.price());
+        service.applyCashDelta(open.buyerAccountId(), new BigDecimal("-50000"));
+        service.applyCashDelta(open.sellerAccountId(), new BigDecimal("50000"));
 
         Trade close = new Trade(2L, 3L, 1L, "BTC-USD",
                 new BigDecimal("55000"), new BigDecimal("1"), NOW, 300L, 100L, 2L);
         service.applyTrade(close, close.price());
+        service.applyCashDelta(close.buyerAccountId(), new BigDecimal("-55000"));
+        service.applyCashDelta(close.sellerAccountId(), new BigDecimal("55000"));
 
         Portfolio seller = service.portfolio(100L);
         assertThat(seller.positions().get(0).quantity()).isEqualTo(new BigDecimal("0"));
