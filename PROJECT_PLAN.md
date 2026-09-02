@@ -62,6 +62,20 @@ LedgerAccount, LedgerEntry) as plain domain objects, framework-agnostic where po
 ## Phase 3 — Correct Order Book
 **Goal:** Simple, correct order book (e.g. TreeMap-backed) with price-time priority.
 **Dependencies:** Phase 2.
+**Status:** Done.
+**Tasks:**
+- [x] New `finex-order-book` Maven module depending on `finex-common`
+- [x] `OrderBook` class using TreeMap for bids (desc) and asks (asc)
+- [x] Price-time priority: BUY high price first, SELL low price first, earlier `sequence` wins
+- [x] `addOrder`, `cancelOrder`, `bestBid`, `bestAsk`, snapshot views
+- [x] Unit tests for priority, cancellation, and determinism
+**Acceptance criteria:**
+- [x] `mvn test` passes with new order book tests (10/10)
+- [x] Same sequence of orders always produces the same book snapshot
+- [x] Best bid/ask correctly identifies top of book
+**Tests:** `OrderBookTest` with priority, cancellation, and determinism cases.
+**Benchmarks:** None yet (JMH comparison of order book structures is Phase 9/17).
+**Deliverables:** `finex-order-book` module, ADR-003.
 
 ## Phase 4 — Matching Engine
 **Goal:** Deterministic price-time-priority matching; full/partial fills; determinism tests.

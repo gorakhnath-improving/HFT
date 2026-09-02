@@ -1,35 +1,33 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 2 — Financial Domain Model (done; committing)
-**Current task:** Commit Phase 2; next is Phase 3 — Correct Order Book
+**Current phase:** Phase 3 — Correct Order Book (done; committing)
+**Current task:** Commit Phase 3; next is Phase 4 — Matching Engine
 
-**Architecture (current):** Maven multi-module reactor. `finex-common` now contains the
-framework-free FinEx domain model (enums + records for User, Account, Instrument, Order,
-Trade, Position, Balance, LedgerAccount, LedgerEntry). `finex-api` is the Spring Boot
-administrative app from Phase 1.
+**Architecture (current):** Maven multi-module reactor. `finex-common` has the domain
+model. `finex-order-book` has a TreeMap-based `OrderBook` with deterministic price-time
+priority. `finex-api` is the Spring Boot admin app.
 
 **Completed milestones:**
-- Phase 1 completed and committed (`ac84774`).
-- Phase 2 domain model implemented and tested (15/15 `InstrumentTest` assertions pass,
-  `mvn test` green).
-- ADR-002: `BigDecimal` for money/quantity baseline.
+- Phase 1 committed (`ac84774`).
+- Phase 2 committed (`f975cb9`) with domain model and ADR-002.
+- Phase 3 `OrderBook` implemented and tested (10/10 tests pass) with ADR-003.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs. ADR-000: Maven; ADR-001:
 Docker Compose for infra, native Maven app; ADR-002: `BigDecimal` for fixed-point
-money/quantity in baseline (measure before optimizing hot path).
+money/quantity; ADR-003: TreeMap + per-price list order book baseline.
 
 **Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
 containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
-`com.finex.common.Placeholder` from Phase 1 skeleton is still in the repo and can be
-removed once confirmed safe.
 
 **Current benchmark:** N/A.
 
-**Last successful build:** `mvn -q -DskipTests package` and `mvn test` green (Phase 2).
+**Last successful build:** `mvn -q -DskipTests package` and `mvn test` green (Phase 3,
+`OrderBookTest` 10/10 + `InstrumentTest` 15/15 + `HealthControllerTest` 1/1).
 
-**Next action:** `git add -A && git commit` Phase 2, then start Phase 3: a simple
-TreeMap-backed order book with deterministic price-time priority (BUY high price first,
-SELL low price first; earlier order wins at same price).
+**Next action:** `git add -A && git commit` Phase 3, then start Phase 4: Matching Engine
+(price-time-priority matching, full/partial fills, `Trade` generation, `Order` state
+updates). Consider whether to add a `finex-matching-engine` module or keep matching
+logic alongside `OrderBook`.
 
 **Important commands:**
 ```bash

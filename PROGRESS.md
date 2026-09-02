@@ -4,6 +4,39 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 3: Phase 3 — Correct Order Book
+
+**Phase:** 2 → 3 (in progress)
+
+**Done:**
+- Updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md` for Phase 3.
+- Added `finex-order-book` Maven module, wired into parent `pom.xml`.
+- Implemented `com.finex.orderbook.OrderBook`:
+  - `TreeMap<BigDecimal, List<Order>>` for bids (descending price) and asks (ascending).
+  - Per-price lists sorted by `sequence` for time priority.
+  - `ConcurrentHashMap<Long, Order>` for fast id lookup on cancellation.
+  - `addOrder`, `cancelOrder`, `bestBid`, `bestAsk`, `getBids`, `getAsks`.
+  - Validation: only LIMIT orders, positive remaining quantity, resting statuses.
+- Added `OrderBookTest` (10 tests) covering: empty book, best bid/ask, time priority at
+  same price, cancellation, price level removal, rejection of non-LIMIT/wrong-symbol
+  orders, repeated identical inputs determinism, and flat bid/ask views.
+- ADR-003: TreeMap + per-price list baseline; measure alternatives before optimizing.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS: `OrderBookTest` 10/10, `InstrumentTest` 15/15,
+  `HealthControllerTest` 1/1.
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 3 work.
+- Start Phase 4 — Matching Engine: deterministic price-time-priority matching, full/partial
+  fills, `Trade` generation, `Order` state updates. Matching engine likely becomes
+  `finex-matching-engine` module or extends `finex-order-book`; decide as Phase 4 begins.
+
+---
+
 ## 2026-09-02 — Session 2: Phase 2 — Financial Domain Model
 
 **Phase:** 1 → 2 (in progress)

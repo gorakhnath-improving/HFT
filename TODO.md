@@ -8,39 +8,30 @@ full roadmap.
 - [x] Init git repo, .gitignore
 - [x] Create project memory files
 - [x] Create parent `pom.xml` (Java 25, Spring Boot 4.1.1 BOM, module list)
-- [x] Create `finex-common` module (empty, just group/artifact wiring for now)
-- [x] Create `finex-api` module (web, actuator, jdbc, flyway, postgresql driver;
-      `application.yml`; `V1__init.sql`; `HealthController`; Testcontainers test)
+- [x] Create `finex-common` module
+- [x] Create `finex-api` module (health endpoint, Flyway, Postgres)
 - [x] `docker-compose.yml` at repo root (postgres, prometheus, grafana)
-- [x] `README.md`: prerequisites, build, docker compose up, run, test, curl health
-- [x] `docs/` skeleton files (empty headers, filled in later phases)
-- [x] Verify: `mvn -q -DskipTests package` succeeds
-- [x] Verify: `mvn test` succeeds (real Testcontainers Postgres)
-- [x] Verify: `docker compose up -d postgres` + app boot + `curl` health check works
-- [x] Commit bootstrap work (`ac84774`)
+- [x] README, docs skeleton
+- [x] Verify build + tests
+- [x] Commit (`ac84774`)
 
 ## Phase 2 — Financial Domain Model (done)
 
-- [x] ADR-002: Money / fixed-point numeric representation (BigDecimal)
-- [x] Create `com.finex.common.domain.enums` package:
-  - [x] `Side` (BUY, SELL)
-  - [x] `OrderType` (LIMIT, MARKET)
-  - [x] `OrderStatus` (NEW, OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED)
-  - [x] `InstrumentStatus` (ACTIVE, HALTED)
-  - [x] `AccountStatus` (ACTIVE, FROZEN, CLOSED)
-  - [x] `DebitCredit` (DEBIT, CREDIT)
-  - [x] `EntryType` (TRADE, FEE, SETTLEMENT, ADJUSTMENT)
-  - [x] `LedgerAccountType` (CASH, ASSET, FEE, REALIZED_PNL)
-- [x] Create `com.finex.common.domain` package — records/classes:
-  - [x] `User`, `Account`, `Instrument`
-  - [x] `Order`, `Trade`
-  - [x] `Position`, `Balance`, `LedgerAccount`, `LedgerEntry`
-- [x] Add unit tests for construction and basic invariants (`InstrumentTest`)
-- [x] Build + `mvn test` green
-- [x] Update `PROGRESS.md` / `AGENT_CONTEXT.md`
-- [ ] Commit Phase 2 work
+- [x] ADR-002: `BigDecimal` for money/quantity
+- [x] Domain enums and records in `finex-common`
+- [x] 15 unit tests (`InstrumentTest`)
+- [x] Commit (`f975cb9`)
 
-## Phase 3 — Correct Order Book (next)
+## Phase 3 — Correct Order Book (done)
 
-Goal: Simple, correct order book (e.g. TreeMap-backed) with deterministic price-time
-priority. Dependencies: Phase 2 (done).
+- [x] Add `finex-order-book` to parent `pom.xml`
+- [x] Create `finex-order-book` module
+- [x] `OrderBook` class (TreeMap, price-time priority)
+- [x] 10 unit tests (`OrderBookTest`)
+- [x] ADR-003: order book data structure
+- [ ] Commit Phase 3 work
+
+## Phase 4 — Matching Engine (next)
+
+Goal: Deterministic price-time-priority matching; full/partial fills; `Trade` generation;
+`Order` state updates. Dependencies: Phase 3 (done).

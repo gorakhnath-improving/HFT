@@ -21,6 +21,7 @@
 
     <modules>
         <module>finex-common</module>
+        <module>finex-order-book</module>
         <module>finex-api</module>
     </modules>
 

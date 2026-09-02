@@ -93,3 +93,52 @@ Observability → Benchmark → Profile → Optimize").
 - No `double`/`float` is used for money anywhere in the codebase; this is enforced by
   code review and later by static analysis if needed.
 - Future optimization will be measured before it is applied (JMH/component benchmarks).
+
+---
+
+## ADR-003: Order book data structure — TreeMap + per-price list baseline
+
+**Context:** Phase 3 needs a simple, correct, deterministic order book. Master Plan §9
+lists many possible structures (TreeMap, sorted arrays, primitive collections, custom
+price-level structures, intrusive linked lists, radix structures) and explicitly states
+"Do not assume a theoretically faster data structure is actually faster. Measure." This
+means the first implementation should be a measured baseline, not an over-engineered hot
+path.
+
+**Options:**
+- `TreeMap<BigDecimal, List<Order>>` with explicit bid/ask comparators: very simple,
+  correct, easy to test, built into the JDK, but allocates `Order` objects on inserts.
+- Sorted array / primitive array per price level: faster lookup/insert for small levels,
+  but harder to maintain and requires custom sorting logic.
+- Custom price-level object with intrusive doubly-linked list: ideal for HFT, but complex
+  and error-prone; needs extensive testing before trusting.
+- Agrona / Eclipse Collections primitive collections: less GC pressure, but adds a
+  dependency and requires conversion from domain objects.
+
+**Decision:** Start with `TreeMap<BigDecimal, List<Order>>` in a new `finex-order-book`
+module. Each side has its own sorted map. Within a price level, a plain `ArrayList` keeps
+orders in `sequence` (time) order. A `ConcurrentHashMap<Long, Order>` provides fast
+id-lookup for cancellation. This is the baseline (V1/V2) structure.
+
+**Reason:** It is the smallest structure that guarantees correct price-time priority and
+determinism. It also matches the Master Plan's "Correctness → Tests → Benchmark → Profile
+→ Optimize" ordering. We need a working, tested baseline before we can measure whether a
+fancier structure is actually faster.
+
+**Tradeoffs:**
+- `BigDecimal` tree comparisons and `Order` allocations are not ideal for the 1M orders/sec
+  target, but the hot-path optimization comes later and will be measured.
+- `ArrayList` insertion in the middle (out-of-sequence orders) is O(n), but in the common
+  case of strictly increasing `sequence` it is a single append.
+- `ConcurrentHashMap` adds some overhead; the baseline is not yet lock-free, but no shared
+  mutable state is exposed beyond the internal maps.
+
+**Consequences:**
+- `OrderBook` lives in `finex-order-book` and depends only on `finex-common`.
+- Price-time priority for BUY (highest first, then earliest sequence) and SELL (lowest
+  first, then earliest sequence) is implemented and unit tested.
+- Determinism is easy to prove because the data structure is deterministic and `Order`
+  is immutable.
+- When the matching engine and load generator are ready, JMH or component benchmarks will
+  compare this baseline against alternative book implementations. Results will be recorded
+  in `docs/performance/EXPERIMENTS.md`.
