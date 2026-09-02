@@ -1,19 +1,23 @@
 # TODO — Active Task Queue
 
-## Phase 9 — Event Architecture (done)
+## Phase 10 — Symbol Sharding (done)
 
-- [x] `finex-event-log` module, event store, replay
+- [x] `finex-shard` module and `OrderService` routing
 
-## Phase 10 — Symbol Sharding (in progress)
-
-Goal: Multiple independent matching engine shards; scaling measurements.
-- [ ] Decide: shard abstraction in `finex-api` vs new `finex-shard` module
-- [ ] `SymbolShardRouter` mapping symbol -> shard id (consistent hash / modulo)
-- [ ] `EngineShard` owning one `MatchingEngine`, one `OrderService`-equivalent state
-- [ ] `OrderService` routes submit/cancel to shard and aggregates book snapshots
-- [ ] Sharding correctness test (orders for different symbols go to different engines)
-- [ ] `mvn test` green + commit
-
-## Phase 11 — Ledger (pending)
+## Phase 11 — Ledger (in progress)
 
 Goal: Double-entry ledger, immutable entries, debits == credits invariant.
+- [ ] Create `finex-ledger` Maven module
+- [ ] `LedgerAccount` (code, type: asset/liability/equity/revenue/expense)
+- [ ] `LedgerEntry` immutable (id, timestamp, account, debit/credit, amount, currency, narration)
+- [ ] `Ledger` interface: `post(List<LedgerEntry>)`, `balance(account)`, `entries()`
+- [ ] In-memory `InMemoryLedger` enforcing `sum(debits) == sum(credits)` per post
+- [ ] `OrderService` posts cash/asset transfers on trade (buyer cash credit, asset debit, etc.)
+- [ ] `LedgerTest` verifying double-entry invariants and trade postings
+- [ ] `mvn test` green + commit
+
+## Final
+
+- [ ] Full `mvn test`
+- [ ] Commit Phase 11
+- [ ] Update `README.md` / `DESIGN_DECISIONS.md` / `PROJECT_PLAN.md` / `PROGRESS.md` if needed

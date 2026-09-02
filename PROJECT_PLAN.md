@@ -214,24 +214,42 @@ full/partial fill scenario.
 ## Phase 10 — Symbol Sharding
 **Goal:** Multiple independent matching engine shards; scaling measurements.
 **Dependencies:** Phase 4, 9.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] `SymbolShardRouter` mapping symbol -> shard id (consistent hash / modulo)
-- [ ] `EngineShard` abstraction: one `MatchingEngine` + per-symbol state
-- [ ] `OrderService` routes by symbol and aggregates cross-shard book snapshots if needed
-- [ ] Sharding correctness test (different symbols on different engines, same symbol on same engine)
-- [ ] `mvn test` green
+- [x] New `finex-shard` Maven module depending on `finex-common`, `finex-order-book`, `finex-matching-engine`
+- [x] `SymbolShardRouter` mapping symbol -> shard id via non-negative modulo of `hashCode`
+- [x] `EngineShard` owning per-symbol `MatchingEngine` instances
+- [x] `ShardCoordinator` managing a fixed number of shards
+- [x] `OrderService` routes submit/cancel to shard by symbol and exposes `replay()`
+- [x] `SymbolShardRouterTest` and `OrderServiceShardingTest`
+- [x] Fixed `OrderService` order cache by returning `MatchResult.updatedOrders` from `MatchingEngine`
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Orders for different symbols are routed to independent matching engines
-- [ ] Replay still works with sharded engines
-**Tests:** `SymbolShardRouterTest`, `OrderService` sharding test.
+- [x] `mvn test` passes
+- [x] Orders for different symbols are routed to independent matching engines
+- [x] Replay still works with sharded engines
+**Tests:** `SymbolShardRouterTest`, `OrderServiceShardingTest`, `OrderServiceReplayTest`.
 **Benchmarks:** None.
-**Deliverables:** Symbol sharding in `OrderService` or `finex-shard` module.
+**Deliverables:** `finex-shard` module integrated into `OrderService`.
 
 ## Phase 11 — Ledger
 **Goal:** Double-entry ledger, immutable entries, debits == credits invariant.
-**Dependencies:** Phase 2, 4, 7.
+**Dependencies:** Phase 2, 4, 7, 10.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-ledger` Maven module depending on `finex-common`
+- [ ] `LedgerAccount` with code, type, and currency
+- [ ] `LedgerEntry` immutable record (id, timestamp, account code, debit/credit flag, amount, narration)
+- [ ] `Ledger` interface: `post(List<LedgerEntry>)`, `entries()`, `balance(accountCode)`
+- [ ] In-memory `InMemoryLedger` enforcing `sum(debits) == sum(credits)` for every post
+- [ ] `OrderService` posts trade settlement entries (buyer cash/asset, seller cash/asset)
+- [ ] `LedgerTest` verifying double-entry invariants and trade postings
+**Acceptance criteria:**
+- [ ] `mvn test` passes including ledger tests
+- [ ] Every trade creates balanced ledger entries (debits == credits)
+- [ ] Ledger entries are immutable and append-only
+**Tests:** `LedgerTest`, updated `OrderService` test.
+**Benchmarks:** None.
+**Deliverables:** `finex-ledger` module integrated into `OrderService`.
 
 ## Phase 12 — Portfolio / P&L
 **Goal:** Position, avg price, realized/unrealized P&L, exposure, equity.

@@ -18,9 +18,9 @@ import com.finex.common.domain.enums.Side;
 import com.finex.eventlog.CancelOrderCommand;
 import com.finex.eventlog.CommandHandler;
 import com.finex.eventlog.CommandSerializer;
-import com.finex.eventlog.Event;
 import com.finex.eventlog.EventStore;
 import com.finex.eventlog.InMemoryEventStore;
+import com.finex.eventlog.ReplayEngine;
 import com.finex.eventlog.SubmitOrderCommand;
 import com.finex.marketdata.BookUpdate;
 import com.finex.marketdata.BookUpdateFactory;
@@ -35,11 +35,13 @@ import com.finex.risk.AccountRiskState;
 import com.finex.risk.RiskConfig;
 import com.finex.risk.RiskEngine;
 import com.finex.risk.RiskResult;
+import com.finex.shard.EngineShard;
+import com.finex.shard.ShardCoordinator;
 
 /**
- * Service that owns per-symbol {@link MatchingEngine} instances and exposes the trading
- * surface to the REST layer. In the baseline, engines are created lazily for any symbol
- * that receives an order; persistence of instruments/accounts is Phase 2/11+.
+ * Service that owns per-symbol {@link MatchingEngine} instances sharded by symbol and
+ * exposes the trading surface to the REST layer. Persistence of instruments/accounts is
+ * Phase 2/11+.
  *
  * <p>Phase 6 adds a baseline in-memory {@link RiskEngine} that validates every order before
  * it reaches the matching engine and updates account cash/positions when trades occur.
@@ -49,6 +51,9 @@ import com.finex.risk.RiskResult;
  *
  * <p>Phase 9 adds an append-only {@link EventStore} and makes the service replayable via
  * {@link CommandHandler}.
+ *
+ * <p>Phase 10 adds symbol sharding via {@link ShardCoordinator} so independent symbols can
+ * be processed by independent {@link EngineShard}s.
  */
 @Service
 public class OrderService implements CommandHandler {
@@ -56,7 +61,7 @@ public class OrderService implements CommandHandler {
     private static final BigDecimal DEFAULT_INITIAL_CASH = new BigDecimal("1000000");
     private static final BigDecimal DEFAULT_INITIAL_POSITION = BigDecimal.ZERO;
 
-    private final Map<String, MatchingEngine> engines = new ConcurrentHashMap<>();
+    private final ShardCoordinator coordinator;
     private final Map<Long, Order> orderCache = new ConcurrentHashMap<>();
     private final AtomicLong orderSequence = new AtomicLong(0);
 
@@ -68,14 +73,19 @@ public class OrderService implements CommandHandler {
     private final EventStore eventStore;
 
     public OrderService() {
-        this(new InMemoryEventStore());
+        this(new InMemoryEventStore(), 1);
     }
 
     public OrderService(EventStore eventStore) {
+        this(eventStore, 1);
+    }
+
+    public OrderService(EventStore eventStore, int shardCount) {
         if (eventStore == null) {
             throw new IllegalArgumentException("eventStore must not be null");
         }
         this.eventStore = eventStore;
+        this.coordinator = new ShardCoordinator(shardCount);
     }
 
     public MatchResult submitOrder(OrderRequest request, Instant now) {
@@ -98,7 +108,7 @@ public class OrderService implements CommandHandler {
     }
 
     private MatchResult processSubmitOrder(SubmitOrderCommand command, Instant now) {
-        MatchingEngine engine = engines.computeIfAbsent(command.symbol(), MatchingEngine::new);
+        EngineShard shard = coordinator.shardFor(command.symbol());
         long orderId = orderSequence.incrementAndGet();
         long sequence = orderSequence.incrementAndGet();
 
@@ -124,14 +134,17 @@ public class OrderService implements CommandHandler {
             throw new OrderRejectedException(rejected, riskResult.reason());
         }
 
-        MatchResult result = engine.placeOrder(order, now);
+        MatchResult result = shard.placeOrder(order, now);
         orderCache.put(orderId, result.order());
+        for (Map.Entry<Long, Order> entry : result.updatedOrders().entrySet()) {
+            orderCache.put(entry.getKey(), entry.getValue());
+        }
         for (Trade trade : result.trades()) {
             lastTradePrices.put(command.symbol(), trade.price());
             applyTradeToRiskState(trade);
         }
-        publishMatchEvents(command.symbol(), result, now);
-        publishBookUpdate(command.symbol(), engine, now);
+        publishMatchEvents(command.symbol(), shard, result, now);
+        publishBookUpdate(command.symbol(), shard, now);
         return result;
     }
 
@@ -140,8 +153,8 @@ public class OrderService implements CommandHandler {
         if (cached != null) {
             // The order may have been partially filled by later trades while resting.
             // Check the live book first; if not there, use the cached final state.
-            for (MatchingEngine engine : engines.values()) {
-                Optional<Order> live = engine.orderBook().findOrder(orderId);
+            for (EngineShard shard : coordinator.shards()) {
+                Optional<Order> live = shard.findOrder(orderId);
                 if (live.isPresent()) {
                     return Optional.of(OrderResponse.from(orderId, live.get(), List.of(), true));
                 }
@@ -152,8 +165,8 @@ public class OrderService implements CommandHandler {
     }
 
     public boolean cancelOrder(long orderId, Instant now) {
-        for (MatchingEngine engine : engines.values()) {
-            Optional<Order> live = engine.orderBook().findOrder(orderId);
+        for (EngineShard shard : coordinator.shards()) {
+            Optional<Order> live = shard.findOrder(orderId);
             if (live.isPresent()) {
                 CancelOrderCommand command = new CancelOrderCommand(live.get().accountId(), orderId);
                 eventStore.append(CommandSerializer.toEvent(command, now, 0L));
@@ -169,13 +182,13 @@ public class OrderService implements CommandHandler {
     }
 
     private boolean doCancel(CancelOrderCommand command, Instant now) {
-        for (MatchingEngine engine : engines.values()) {
-            Optional<Order> live = engine.orderBook().findOrder(command.orderId());
+        for (EngineShard shard : coordinator.shards()) {
+            Optional<Order> live = shard.findOrder(command.orderId());
             if (live.isPresent()) {
                 if (live.get().accountId() != command.accountId()) {
                     return false;
                 }
-                boolean cancelled = engine.cancelOrder(command.orderId());
+                boolean cancelled = shard.cancelOrder(command.orderId(), now);
                 if (cancelled) {
                     Order cancelledOrder = live.get().cancelled(now);
                     orderCache.put(command.orderId(), cancelledOrder);
@@ -183,7 +196,7 @@ public class OrderService implements CommandHandler {
                     if (state != null) {
                         riskEngine.onCancel(state, command.orderId());
                     }
-                    publishBookUpdate(cancelledOrder.symbol(), engine, now);
+                    publishBookUpdate(cancelledOrder.symbol(), shard, now);
                 }
                 return cancelled;
             }
@@ -192,12 +205,9 @@ public class OrderService implements CommandHandler {
     }
 
     public Optional<OrderBookView> getOrderBook(String symbol) {
-        MatchingEngine engine = engines.get(symbol);
-        if (engine == null) {
-            return Optional.empty();
-        }
-        OrderBook book = engine.orderBook();
-        return Optional.of(OrderBookView.from(symbol, book.getBids(), book.getAsks()));
+        EngineShard shard = coordinator.shardFor(symbol);
+        Optional<OrderBook> book = shard.orderBook(symbol);
+        return book.map(b -> OrderBookView.from(symbol, b.getBids(), b.getAsks()));
     }
 
     /**
@@ -214,6 +224,13 @@ public class OrderService implements CommandHandler {
         return eventStore;
     }
 
+    /**
+     * Replays all events from the event store into this service.
+     */
+    public void replay() {
+        ReplayEngine.replay(eventStore, this);
+    }
+
     private AccountRiskState riskState(long accountId) {
         return riskStates.computeIfAbsent(accountId, id ->
                 new AccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION, riskEngine.config()));
@@ -226,14 +243,11 @@ public class OrderService implements CommandHandler {
         riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
     }
 
-    private void publishMatchEvents(String symbol, MatchResult result, Instant now) {
+    private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {
         if (result.trades().isEmpty()) {
             return;
         }
-        MatchingEngine engine = engines.get(symbol);
-        if (engine == null) {
-            return;
-        }
+        MatchingEngine engine = shard.matchingEngine(symbol);
 
         Order finalIncoming = result.order();
         for (Trade trade : result.trades()) {
@@ -267,9 +281,11 @@ public class OrderService implements CommandHandler {
                 .orElse(OrderStatus.FILLED);
     }
 
-    private void publishBookUpdate(String symbol, MatchingEngine engine, Instant now) {
-        BookUpdate update = BookUpdateFactory.from(symbol, engine.orderBook(), now);
-        publisher.publish(update);
+    private void publishBookUpdate(String symbol, EngineShard shard, Instant now) {
+        shard.orderBook(symbol).ifPresent(book -> {
+            BookUpdate update = BookUpdateFactory.from(symbol, book, now);
+            publisher.publish(update);
+        });
     }
 
     private static void validateRequest(OrderRequest request) {

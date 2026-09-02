@@ -3,7 +3,9 @@ package com.finex.matching;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -72,6 +74,7 @@ public class MatchingEngine {
         }
 
         List<Trade> trades = new ArrayList<>();
+        Map<Long, Order> updatedOrders = new HashMap<>();
         Order current = order;
 
         while (current.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -105,6 +108,9 @@ public class MatchingEngine {
             OrderStatus restingStatus = afterFillStatus(resting.remainingQuantity(), matchQty);
             Order updatedResting = resting.withFill(matchQty, restingStatus, now);
 
+            updatedOrders.put(current.orderId(), current);
+            updatedOrders.put(updatedResting.orderId(), updatedResting);
+
             // Replace the resting order in the book.
             book.cancelOrder(resting.orderId());
             if (updatedResting.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -115,7 +121,8 @@ public class MatchingEngine {
         if (current.type() == OrderType.LIMIT && current.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
             // A new limit order that has not been fully matched rests in the book.
             book.addOrder(current);
-            return new MatchResult(current, List.copyOf(trades), true);
+            updatedOrders.put(current.orderId(), current);
+            return new MatchResult(current, List.copyOf(trades), true, Map.copyOf(updatedOrders));
         }
 
         if (current.type() == OrderType.MARKET && current.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -123,7 +130,8 @@ public class MatchingEngine {
             current = current.cancelled(now);
         }
 
-        return new MatchResult(current, List.copyOf(trades), false);
+        updatedOrders.put(current.orderId(), current);
+        return new MatchResult(current, List.copyOf(trades), false, Map.copyOf(updatedOrders));
     }
 
     private Optional<Order> topOfOppositeSide(Side side) {
