@@ -17,31 +17,47 @@ Build tool: **Maven** (multi-module reactor). Containerized dependencies: **Dock
 ## Phase 1 — Repository Bootstrap
 **Goal:** A buildable, runnable skeleton with no business logic — proves the toolchain works.
 **Dependencies:** Phase 0.
+**Status:** Done.
 **Tasks:**
 - [x] `git init`, `.gitignore`
 - [x] Project memory files (this file, PROGRESS.md, TODO.md, AGENT_CONTEXT.md, DESIGN_DECISIONS.md)
-- [ ] Maven multi-module parent POM (dependency/version management only, no logic)
-- [ ] `finex-common` module (shared model/util, no framework deps yet)
-- [ ] `finex-api` module: minimal Spring Boot app (health endpoint only)
-- [ ] `docker-compose.yml`: PostgreSQL, Prometheus, Grafana
-- [ ] Flyway wired into `finex-api` with a placeholder migration, connecting to Dockerized Postgres
-- [ ] `GET /api/v1/health` returns 200 and reports DB connectivity
-- [ ] README with build/run instructions
-- [ ] Root `docs/` skeleton (ARCHITECTURE.md, PROTOCOL.md, PERFORMANCE.md, BENCHMARKS.md,
+- [x] Maven multi-module parent POM (dependency/version management only, no logic)
+- [x] `finex-common` module (shared model/util, no framework deps yet)
+- [x] `finex-api` module: minimal Spring Boot app (health endpoint only)
+- [x] `docker-compose.yml`: PostgreSQL, Prometheus, Grafana
+- [x] Flyway wired into `finex-api` with a placeholder migration, connecting to Dockerized Postgres
+- [x] `GET /api/v1/health` returns 200 and reports DB connectivity
+- [x] README with build/run instructions
+- [x] Root `docs/` skeleton (ARCHITECTURE.md, PROTOCOL.md, PERFORMANCE.md, BENCHMARKS.md,
       FINANCIAL_MODEL.md, DESIGN_DECISIONS.md placeholder — real content later)
 **Acceptance criteria:**
-- `mvn -q -DskipTests package` succeeds from repo root
-- `docker compose up -d postgres` + `mvn -pl finex-api spring-boot:run` boots the app
-- `curl localhost:8080/api/v1/health` returns 200 with DB status UP
+- [x] `mvn -q -DskipTests package` succeeds from repo root
+- [x] `docker compose up -d postgres` + `mvn -pl finex-api spring-boot:run` boots the app
+- [x] `curl localhost:8080/api/v1/health` returns 200 with DB status UP
 **Tests:** Smoke test (Spring context loads); Testcontainers Postgres integration test for health check.
 **Benchmarks:** None yet.
-**Deliverables:** Buildable skeleton, first commit(s).
+**Deliverables:** Buildable skeleton, first commit (`ac84774`).
 
 ## Phase 2 — Financial Domain Model
 **Goal:** Core entities (User, Account, Instrument, Order, Trade, Position, Balance,
 LedgerAccount, LedgerEntry) as plain domain objects, framework-agnostic where possible.
 **Dependencies:** Phase 1.
-**Tasks:** TBD — will be broken into atomic tasks when this phase starts.
+**Status:** Done.
+**Tasks:**
+- [x] ADR-002: Money / fixed-point numeric representation (BigDecimal)
+- [x] Enums: Side, OrderType, OrderStatus, InstrumentStatus, AccountStatus, plus
+      DebitCredit, EntryType, LedgerAccountType
+- [x] `User`, `Account`, `Instrument` records
+- [x] `Order`, `Trade` records with validation
+- [x] `Position`, `Balance`, `LedgerAccount`, `LedgerEntry` records with validation
+- [x] Unit tests for construction, equality, and basic invariants
+**Acceptance criteria:**
+- [x] `finex-common` contains framework-agnostic domain objects and enums
+- [x] `mvn test` passes with new unit tests (15/15 `InstrumentTest`)
+- [x] No persistence or service wiring yet
+**Tests:** Unit tests for each domain type and its invariants.
+**Benchmarks:** None.
+**Deliverables:** Domain model in `finex-common`, ADR-002.
 
 ## Phase 3 — Correct Order Book
 **Goal:** Simple, correct order book (e.g. TreeMap-backed) with price-time priority.

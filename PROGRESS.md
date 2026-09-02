@@ -4,6 +4,43 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-02 — Session 2: Phase 2 — Financial Domain Model
+
+**Phase:** 1 → 2 (in progress)
+
+**Done:**
+- Started Phase 2; updated `TODO.md`, `PROJECT_PLAN.md`, `AGENT_CONTEXT.md`.
+- Added framework-agnostic domain model to `finex-common`:
+  - Enums: `Side`, `OrderType`, `OrderStatus`, `InstrumentStatus`, `AccountStatus`,
+    `DebitCredit`, `EntryType`, `LedgerAccountType`.
+  - Records: `User`, `Account`, `Instrument`, `Order`, `Trade`, `Position`, `Balance`,
+    `LedgerAccount`, `LedgerEntry`.
+- Domain validation in constructors: positive prices/quantities/tick/lot sizes,
+  non-negative balances/positions, blank string guards, non-null references.
+- `Order` is immutable and provides `withFill(...)` / `cancelled(...)` copy methods to
+  support fill/cancel state transitions without mutating the original.
+- `Position.marketValue(...)` and `Position.totalPnl()` helper methods.
+- `Balance.total()` helper.
+- `InstrumentTest`: 15 unit tests covering construction, basic invariants, order fill
+  transitions, trade creation, balance/position math, and ledger entry validation.
+- ADR-002: `BigDecimal` for fixed-point money/quantity in the baseline (no custom
+  wrappers yet; will measure before optimizing the hot path).
+- Added AssertJ as a test dependency to `finex-common/pom.xml`.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS: `finex-common` 15/15 domain tests pass,
+  `finex-api` `HealthControllerTest` still passes (1/1).
+
+**Blockers:** None.
+
+**Next session should:**
+- Commit Phase 2 work.
+- Start Phase 3 — Correct Order Book (TreeMap-backed, price-time priority) or continue
+  expanding Phase 2 if additional entities (e.g. `ExecutionReport`) are needed.
+
+---
+
 ## 2026-09-02 — Session 1: Project bootstrap
 
 **Phase:** 0 → 1 (in progress)

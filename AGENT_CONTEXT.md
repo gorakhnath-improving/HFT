@@ -1,47 +1,39 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 1 — Repository Bootstrap (functionally complete, pending commit)
-**Current task:** Commit bootstrap; then start Phase 2 (Financial Domain Model)
+**Current phase:** Phase 2 — Financial Domain Model (done; committing)
+**Current task:** Commit Phase 2; next is Phase 3 — Correct Order Book
 
-**Architecture (current):** Maven multi-module reactor at `finex/`. Modules:
-`finex-common` (empty shared module, placeholder class only), `finex-api` (Spring Boot 4.1.1
-app on Java 25, exposes `GET /api/v1/health` + actuator/prometheus endpoints, Flyway-managed
-Postgres connection). More modules (`finex-order-book`, `finex-matching-engine`,
-`finex-risk`, etc.) added as their phases start — see PROJECT_PLAN.md / Master Plan §40.
+**Architecture (current):** Maven multi-module reactor. `finex-common` now contains the
+framework-free FinEx domain model (enums + records for User, Account, Instrument, Order,
+Trade, Position, Balance, LedgerAccount, LedgerEntry). `finex-api` is the Spring Boot
+administrative app from Phase 1.
 
 **Completed milestones:**
-- Project memory files created (this file, PROJECT_PLAN.md, PROGRESS.md, TODO.md,
-  DESIGN_DECISIONS.md).
-- Maven parent + `finex-common` + `finex-api` scaffolded and building.
-- `docker-compose.yml` (postgres, prometheus, grafana) + provisioning config under `docker/`.
-- `finex-api` health endpoint verified end-to-end against real Dockerized Postgres.
+- Phase 1 completed and committed (`ac84774`).
+- Phase 2 domain model implemented and tested (15/15 `InstrumentTest` assertions pass,
+  `mvn test` green).
+- ADR-002: `BigDecimal` for money/quantity baseline.
 
-**Important decisions:** See DESIGN_DECISIONS.md / ADRs. ADR-000: Maven over Gradle
-(user preference). ADR-001: infra via Docker Compose (Postgres/Prometheus/Grafana); app
-runs natively via Maven for now, not containerized itself yet. Stack picks: Java 25,
-Spring Boot 4.1.1 (current supported line — 3.5.x reached OSS EOL), Testcontainers 2.0.5
-(artifact renamed to `testcontainers-postgresql` in 2.x).
+**Important decisions:** See `DESIGN_DECISIONS.md` / ADRs. ADR-000: Maven; ADR-001:
+Docker Compose for infra, native Maven app; ADR-002: `BigDecimal` for fixed-point
+money/quantity in baseline (measure before optimizing hot path).
 
-**Known problems:** JUnit test classes must be named `*Test`/`Test*` (not `*IT`) since no
-Failsafe plugin is configured — default Surefire include pattern won't pick up `*IT.java`.
-On this dev machine, local port 5432 can be occupied by unrelated Docker containers from
-other projects; pass `DB_PORT=<free-port>` to `docker compose up` / the app if so.
+**Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
+containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
+`com.finex.common.Placeholder` from Phase 1 skeleton is still in the repo and can be
+removed once confirmed safe.
 
-**Current benchmark:** N/A — no matching engine yet.
+**Current benchmark:** N/A.
 
-**Last successful build:** `mvn -q -DskipTests package` and `mvn test` both green (1 test,
-Testcontainers Postgres). End-to-end docker-compose + spring-boot:run + curl health verified.
+**Last successful build:** `mvn -q -DskipTests package` and `mvn test` green (Phase 2).
 
-**Next action:** `git add -A && git commit` the bootstrap, then expand Phase 2 atomic tasks
-in TODO.md (domain model classes in finex-common) and start implementing.
+**Next action:** `git add -A && git commit` Phase 2, then start Phase 3: a simple
+TreeMap-backed order book with deterministic price-time priority (BUY high price first,
+SELL low price first; earlier order wins at same price).
 
 **Important commands:**
 ```bash
 # From finex/ directory:
-docker compose up -d postgres          # start Postgres
 mvn -q -DskipTests package             # build all modules
-mvn -pl finex-api spring-boot:run      # run the API app
-curl localhost:8080/api/v1/health      # check health
 mvn test                               # run tests
-docker compose down                    # stop infra
 ```
