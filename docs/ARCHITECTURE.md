@@ -1,8 +1,61 @@
 # Architecture
 
-FinEx is a Maven multi-module Java/Spring Boot simulated exchange. The design separates
-correctness-critical financial plumbing from the performance-critical matching hot path,
-so each can evolve independently.
+FinEx is a Maven multi-module Java/Spring Boot simulated exchange. The design deliberately
+separates two planes that have different priorities:
+
+- A **Spring Boot control plane** (REST API, security, metrics, observability) that
+  prioritizes developer ergonomics, operability, and correctness.
+- A **performance-oriented trading plane** (matching engine, order book, risk, binary
+  protocol, event log) that prioritizes low allocation, determinism, and measured
+  throughput/latency.
+
+The Spring Boot layer is a thin, synchronous front door onto the trading plane in this
+baseline — it is not itself claimed to be an HFT engine. See
+`docs/performance/FINAL_BENCHMARK_REPORT.md` for what has and has not been measured.
+
+## System diagram
+
+```text
+                              Clients
+                                 │
+                                 ▼
+                       Spring Boot Control Plane
+                (REST API, API-key security, metrics/Prometheus)
+                                 │
+                                 ▼
+                        OrderService (finex-api)
+                 (numeric mode selection, shard routing)
+                                 │
+                 ┌───────────────┼───────────────────┐
+                 ▼               ▼                    ▼
+          Event Log         Risk Engine          Market Data
+        (append + replay)  (BigDecimal ref. /    (book/trade/
+                            fixed-point opt.)     execution events)
+                 │               │
+                 │               ▼
+                 │        Shard Coordinator
+                 │               │
+                 │               ▼
+                 │       Matching Engine + Order Book
+                 │        (single-threaded per shard,
+                 │         price-time priority)
+                 │               │
+                 │               ▼
+                 │           Trade(s)
+                 │               │
+                 └───────►  Settlement
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼             ▼
+                 Ledger      Clearing      Portfolio
+              (double-entry) (fees/net    (positions,
+                              cash)         P&L)
+```
+
+The **hot path** is `OrderService` → `RiskEngine`/`FixedPointRiskEngine` → `EngineShard` →
+`MatchingEngine`/`OrderBook`. The **durable financial path** is the `EventStore` (append-only,
+replayable) and everything under `Settlement` (ledger, clearing, portfolio) — this is where
+correctness and auditability, not raw speed, are the priority.
 
 ## Module boundaries
 
@@ -43,9 +96,11 @@ so each can evolve independently.
 
 The hot path (matching engine, order book, market-data publisher) is intentionally
 single-threaded per symbol shard. The `OrderService` serializes access per account for
-risk updates, but each symbol shard can run independently. This is the baseline; the
-1M orders/sec target will require lock-free structures, fixed-point numerics, and
-potentially dedicated threads per shard.
+risk updates, but each symbol shard can run independently. Fixed-point numerics
+(`FixedPoint`, `FixedPointRiskEngine`, `FixedPointClearingService`) are now implemented as a
+selectable, measured optimization on top of this baseline (see OPT-010/012/013 in
+`docs/performance/OPTIMIZATIONS.md`); a fully lock-free, multi-shard matching architecture
+remains a documented future-research direction (`docs/FUTURE_RESEARCH.md`), not yet built.
 
 ## Concurrency model
 

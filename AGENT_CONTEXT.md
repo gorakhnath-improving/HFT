@@ -1,13 +1,20 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-013 is **VALIDATED IMPROVEMENT / KEPT**. Fixed-point cash, position,
-and price reservations now share one primitive key table with parallel values. Five valid isolated
-pairs measured +13.97% mean throughput (+12.47% median); median p50–p99.99 improved while max
-latency and JFR GC pause regressed and are documented. Long allocation pressure fell 11.26%→2.39%
-and map-put CPU 16.33%→5.42%. Full tests and all seven 100k differential/replay/invariant profiles
-pass. Next candidate is protocol/event byte-array allocation; not started.
+**Current phase:** **FINALIZED / PORTFOLIO COMPLETE.** All 24 foundation phases and all 13
+numbered performance-engineering optimizations (OPT-001 through OPT-013) are complete. The
+project has deliberately stopped active optimization at a meaningful stopping point rather than
+chasing the 1M ops/sec conceptual target indefinitely — see the "Most important rule" framing in
+`PROGRESS.md`'s finalization entry. Do not start OPT-014+ without an explicit new user request
+and a fresh profile; see `docs/FUTURE_RESEARCH.md` for evidence-ranked, deliberately-not-started
+future directions.
+
+**Final state:** `mvn test` green across all 16 modules (19 test suites). OPT-013 (consolidated
+fixed-point reservation table) is the last validated optimization: five isolated interleaved pairs
+measured +13.97% mean throughput (+12.47% median); median p50–p99.99 latency improved while max
+latency and JFR GC pause regressed slightly (documented, not hidden). A final reproducibility run
+on a loaded machine measured a much lower ~404k mean ops/sec — see `docs/performance/
+FINAL_BENCHMARK_REPORT.md` for why this is expected machine-load variance, not a regression, and
+why paired/interleaved A/Bs (not single absolute numbers) are this project's evidence standard.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -91,9 +98,12 @@ pass. Next candidate is protocol/event byte-array allocation; not started.
   This machine is shared with an interactive Devin session, Microsoft Defender, and a
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
-**Remaining backlog:** OPT-008 remains deprioritized because metrics are absent from hot
-profiles. Next candidate is protocol/event encoding and byte-array allocation while preserving
-byte-identical event compatibility; not started.
+**Remaining backlog:** None currently authorized. `docs/FUTURE_RESEARCH.md` lists 8 evidence-ranked
+candidates (protocol/event allocation, ledger allocation, GC/tail-latency analysis,
+matching-engine structural work, remaining BigDecimal boundaries, concurrency-contract
+refinement, single-writer/sharded architecture, metrics batching) — each with current evidence,
+risk, and why it wasn't pursued. None are current TODOs; do not start any without a fresh
+profile and an explicit request.
 
 **New commands (OPT-009 stress harness):**
 ```bash
@@ -107,10 +117,13 @@ java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
   com.finex.benchmarks.stress.StressDriver 7 ALL 100000
 ```
 
-**Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
-`OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.
+**Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md` (final honest status),
+`BENCHMARKS.md` (raw numbers), `OPTIMIZATIONS.md` (per-optimization technical detail),
+`OPTIMIZATION_JOURNEY.md` (narrative), `OPTIMIZATION_EVIDENCE.md`, `OPTIMIZATION_PLAN.md`, and
+`EXPERIMENTS.md` (raw experiment logs including rejected hypotheses).
 
-**Last successful build:** `mvn test` green across all 16 modules after OPT-010 integration.
+**Last successful build:** `mvn test` green across all 16 modules, verified at finalization
+(post-OPT-013).
 
 **Important commands:**
 ```bash

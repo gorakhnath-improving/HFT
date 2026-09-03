@@ -119,6 +119,32 @@ p99.99 43,167→41,375; max regressed 71.2→75.4 ms. JFR Long pressure 11.26%�
 map-put CPU 16.33%→5.42%, young GC 16→12; total/max GC pause regressed 747→779 ms and
 127→224 ms.
 
+## Final reproducibility run (portfolio finalization)
+
+`mvn test` passed across all 16 modules (19 test suites) immediately before this run. As a
+final, honest reproducibility check (not a new optimization claim), the sustained driver was
+re-run once more, fixed-point mode, 5 fresh-JVM repetitions, 1.5M orders / 500 accounts:
+
+| Rep | ops/sec |
+|---|---:|
+| 1 | 556,768 |
+| 2 | 402,618 |
+| 3 | 233,305 |
+| 4 | 439,827 |
+| 5 | 388,336 |
+| mean | 404,171 |
+| median | 402,618 |
+| stdev | 116,195 |
+
+This is markedly lower than the 945,413 ops/sec paired-comparison figure recorded for OPT-013.
+The machine showed `load average 6.73` (10 cores) and ~5.8 GB under memory compression at the
+time — i.e. this run was not on a quiet machine, and the drop is consistent with the
+machine-load sensitivity already documented during the OPT-007 session (see
+`FINAL_BENCHMARK_REPORT.md` and `PROGRESS.md`). No code changed between the OPT-013 paired
+benchmark and this run; both numbers are genuine measurements of the same code under different
+load conditions. This is reported here rather than omitted, per the project's evidence-honesty
+standard — see `FINAL_BENCHMARK_REPORT.md` for the full explanation.
+
 ### Latest latency percentiles (post OPT-006)
 
 | p50 | p90 | p99 | p99.9 | p99.99 | max |

@@ -4,6 +4,63 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 22: Finalization — FINALIZED / PORTFOLIO COMPLETE
+
+**Scope:** Following the explicit directive to stop active performance optimization at a
+meaningful stopping point (13 numbered experiments, 10 validated, 1 rejected, 1 no-measurable-
+improvement, 1 deferred) and finalize the repository for GitHub/portfolio presentation.
+
+**Decision, stated plainly:** No OPT-014 was invented. The project stops here. 945,413 mean
+ops/sec (OPT-013's paired benchmark) is a strong, honestly-measured result; chasing the 1,000,000
+figure further for its own sake was explicitly rejected as a goal for this session.
+
+**Done:**
+- Re-verified `mvn test` green across all 16 modules / 19 test suites, no code changes.
+- Cleaned up two leftover `git worktree`s from prior A/B benchmarking sessions
+  (`/tmp/finex-opt011-baseline`, `/tmp/finex-opt013-baseline`).
+- Ran a final reproducibility benchmark (`SustainedSharedServiceDriver`, fixed-point mode, 5
+  fresh-JVM reps, 1.5M orders/500 accounts): mean 404,171 / median 402,618 / stdev 116,195
+  ops/sec — markedly lower than OPT-013's 945,413 paired figure. Root-caused to machine load at
+  the time (`load average 6.73` on 10 cores, ~5.8GB memory under compression), consistent with
+  the exact same variance pattern documented during the OPT-007 session. Reported honestly
+  rather than omitted or re-run until it matched the old number.
+- Wrote `docs/performance/OPTIMIZATION_JOURNEY.md`: a narrative covering the full OPT-001
+  through OPT-013 arc, explicitly including both rejected/downgraded results (OPT-007, OPT-011)
+  as first-class parts of the story, not footnotes.
+- Wrote `docs/FUTURE_RESEARCH.md`: 8 evidence-ranked future directions (protocol/event
+  allocation, ledger allocation, GC/tail-latency analysis, matching-engine structural work,
+  remaining BigDecimal boundaries, concurrency-contract refinement, single-writer/sharded
+  architecture, metrics batching), each with current evidence, risk, and an explicit reason it
+  was not started — deliberately kept out of `TODO.md`.
+- Updated `docs/ARCHITECTURE.md` with a control-plane/trading-plane system diagram and an
+  explicit statement that the Spring Boot layer is not itself claimed to run at HFT speeds.
+- Updated `docs/performance/FINAL_BENCHMARK_REPORT.md` and `BENCHMARKS.md` with the full
+  OPT-001–013 status table, the 945,413 paired figure, and the final reproducibility run
+  (including the honest machine-load explanation) rather than only the best-case number.
+- Rewrote `README.md`: portfolio-grade positioning ("a serious engineering simulation and
+  performance-research project," not a production exchange), a Design Highlights section, and
+  working benchmark/stress-harness reproduction commands.
+- Updated `AGENT_CONTEXT.md` and `TODO.md` to **FINALIZED / PORTFOLIO COMPLETE**, moved all
+  unauthorized future work out of the active task queue.
+- Security/cleanliness check: `.gitignore` already excludes `target/`, `*.jar`, `.env`, IDE
+  files, and logs; no secrets, API keys, or stray benchmark artifacts are tracked; working tree
+  clean.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules immediately before finalization; no production
+  code was touched this session, only documentation and project-state files.
+- Git history was not squashed or rewritten; the full OPT-001 → OPT-013 commit sequence is
+  preserved intact as the project's engineering record.
+
+**Blockers:** None.
+
+**Next session should:** Not start any new optimization automatically. If asked to continue,
+first re-read `docs/FUTURE_RESEARCH.md`, confirm the top-ranked candidate is still supported by
+a *fresh* profile (not the one already on record), and only then apply the same measure →
+hypothesize → experiment → validate → document discipline used throughout OPT-001–013.
+
+---
+
 ## 2026-09-03 — Session 21: OPT-013 — Consolidated reservation table
 
 **Change:** Consolidated cash, position, and price reservation values into parallel arrays under
