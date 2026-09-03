@@ -2,6 +2,7 @@ package com.finex.benchmarks.stress;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -26,6 +27,7 @@ import com.finex.portfolio.Position;
 public record EngineSnapshot(
         Map<Long, OrderView> ordersByOrderId,
         List<LedgerEntryView> ledgerEntries,
+        List<EventView> events,
         Map<Long, PortfolioView> portfoliosByAccountId,
         Map<String, BookView> booksBySymbol) {
 
@@ -50,7 +52,12 @@ public record EngineSnapshot(
                     .ifPresent(book -> books.put(symbol, BookView.from(book)));
         }
 
-        return new EngineSnapshot(orders, ledgerEntries, portfolios, books);
+        List<EventView> events = orderService.eventStore().readAll().stream()
+                .map(event -> new EventView(event.id(), event.timestamp().toString(), event.type(),
+                        Base64.getEncoder().encodeToString(event.payload())))
+                .toList();
+
+        return new EngineSnapshot(orders, ledgerEntries, events, portfolios, books);
     }
 
     public record OrderView(
@@ -64,11 +71,14 @@ public record EngineSnapshot(
                     response.symbol(),
                     response.side().name(),
                     response.type().name(),
-                    response.price(),
-                    response.quantity(),
-                    response.remainingQuantity(),
+                    canonical(response.price()),
+                    canonical(response.quantity()),
+                    canonical(response.remainingQuantity()),
                     response.status().name());
         }
+    }
+
+    public record EventView(long id, String timestamp, String type, String payload) {
     }
 
     public record LedgerEntryView(
@@ -76,7 +86,7 @@ public record EngineSnapshot(
 
         static LedgerEntryView from(LedgerEntry entry) {
             return new LedgerEntryView(
-                    entry.id(), entry.accountCode(), entry.amount(), entry.side().name(),
+                    entry.id(), entry.accountCode(), canonical(entry.amount()), entry.side().name(),
                     entry.currency(), entry.narration());
         }
     }
@@ -89,7 +99,8 @@ public record EngineSnapshot(
                     .map(PositionView::from)
                     .sorted((a, b) -> a.symbol().compareTo(b.symbol()))
                     .toList();
-            return new PortfolioView(portfolio.accountId(), portfolio.cash(), positions, portfolio.totalEquity());
+            return new PortfolioView(portfolio.accountId(), canonical(portfolio.cash()), positions,
+                    canonical(portfolio.totalEquity()));
         }
     }
 
@@ -97,8 +108,8 @@ public record EngineSnapshot(
                                 BigDecimal realizedPnl, BigDecimal unrealizedPnl) {
 
         static PositionView from(Position position) {
-            return new PositionView(position.symbol(), position.quantity(), position.avgPrice(),
-                    position.realizedPnl(), position.unrealizedPnl());
+            return new PositionView(position.symbol(), canonical(position.quantity()), canonical(position.avgPrice()),
+                    canonical(position.realizedPnl()), canonical(position.unrealizedPnl()));
         }
     }
 
@@ -111,12 +122,17 @@ public record EngineSnapshot(
         private static List<BookOrderView> toBookOrderViews(List<OrderResponse> responses) {
             List<BookOrderView> views = new ArrayList<>(responses.size());
             for (OrderResponse response : responses) {
-                views.add(new BookOrderView(response.orderId(), response.price(), response.remainingQuantity()));
+                views.add(new BookOrderView(response.orderId(), canonical(response.price()),
+                        canonical(response.remainingQuantity())));
             }
             return views;
         }
     }
 
     public record BookOrderView(long orderId, BigDecimal price, BigDecimal remainingQuantity) {
+    }
+
+    private static BigDecimal canonical(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros();
     }
 }

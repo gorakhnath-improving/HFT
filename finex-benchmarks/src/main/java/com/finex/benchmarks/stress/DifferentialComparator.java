@@ -23,6 +23,10 @@ public final class DifferentialComparator {
         if (orderMismatch.isPresent()) {
             return orderMismatch;
         }
+        if (!expected.events().equals(actual.events())) {
+            return Optional.of("event log mismatch: expected=" + expected.events().size()
+                    + " events actual=" + actual.events().size() + " events");
+        }
         Optional<String> ledgerMismatch = compareLedgers(expected, actual);
         if (ledgerMismatch.isPresent()) {
             return ledgerMismatch;

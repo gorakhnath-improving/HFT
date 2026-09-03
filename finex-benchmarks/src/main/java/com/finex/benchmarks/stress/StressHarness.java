@@ -59,10 +59,25 @@ public final class StressHarness {
 
         List<String> invariantViolations = FinancialInvariantChecker.check(engineA, contextA);
 
+        OrderService fixedPointEngine = new OrderService(OrderService.NumericMode.FIXED_POINT);
+        ExecutionResult fixedPointContext = CommandExecutor.execute(fixedPointEngine, commands);
+        EngineSnapshot fixedPointSnapshot = EngineSnapshot.capture(fixedPointEngine, fixedPointContext);
+        Optional<String> numericMismatch = DifferentialComparator.compare(snapshotA, fixedPointSnapshot);
+
+        OrderService replayedFixedPointEngine = new OrderService(
+                fixedPointEngine.eventStore(), 1, OrderService.NumericMode.FIXED_POINT);
+        ReplayEngine.replay(fixedPointEngine.eventStore(), replayedFixedPointEngine);
+        EngineSnapshot replayedFixedPointSnapshot = EngineSnapshot.capture(replayedFixedPointEngine, fixedPointContext);
+        Optional<String> fixedPointReplayMismatch = DifferentialComparator.compare(
+                fixedPointSnapshot, replayedFixedPointSnapshot);
+        List<String> fixedPointInvariantViolations = FinancialInvariantChecker.check(
+                fixedPointEngine, fixedPointContext);
+
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         return new StressHarnessResult(
                 seed, profile, commandCount, elapsedMs,
-                determinismMismatch, replayMismatch, invariantViolations,
+                determinismMismatch, replayMismatch, numericMismatch, fixedPointReplayMismatch,
+                invariantViolations, fixedPointInvariantViolations,
                 contextA.rejectedCount(), contextA.cancelAttempts(), contextA.cancelSuccesses());
     }
 }
