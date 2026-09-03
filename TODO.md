@@ -1,15 +1,35 @@
 # TODO — Active Task Queue
 
-## Phase 12-16 — Done
+## Phase 17 — Performance Benchmarks (in progress)
 
-- [x] Phase 12 — Portfolio / P&L
-- [x] Phase 13 — Clearing
-- [x] Phase 14 — Settlement
-- [x] Phase 15 — Replay verification
-- [x] Phase 16 — Load Generator
+- [ ] `finex-benchmarks` Maven module with JMH plugin
+- [ ] JMH microbenchmarks for `OrderBook` and `MatchingEngine`
+- [ ] Component benchmark for `OrderService`
+- [ ] End-to-end `LoadGenerator` benchmark
+- [ ] Sanity test for benchmark classes
+
+## Phase 18 — Profiling (pending)
+
+- [ ] `ProfileRunner` with JFR support
+- [ ] Profiling docs
+
+## Phase 19 — Performance Optimization (pending)
+
+- [ ] Run benchmarks, identify hotspot, optimize, document
+
+## Phase 20 — Observability (pending)
+
+- [ ] Micrometer + Prometheus metrics, Grafana dashboard
+
+## Phase 21 — Failure Testing (pending)
+
+- [ ] Chaos-style tests for invalid input, duplicate/corrupt events
+
+## Phase 22 — Security (pending)
+
+- [ ] API key auth, account isolation, security docs
 
 ## Final
 
-- [x] Full `mvn test` green
-- [ ] Update docs (`PROJECT_PLAN.md`, `PROGRESS.md`, `README.md`, `DESIGN_DECISIONS.md`)
-- [ ] Final commit(s)
+- [ ] Full `mvn test` green
+- [ ] Update docs and final commit(s)

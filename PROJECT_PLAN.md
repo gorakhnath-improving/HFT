@@ -339,26 +339,108 @@ full/partial fill scenario.
 ## Phase 17 — Performance Benchmarks
 **Goal:** JMH microbenchmarks, component benchmarks, end-to-end benchmarks.
 **Dependencies:** Phase 4, 16.
+**Status:** In progress.
+**Tasks:**
+- [ ] New `finex-benchmarks` Maven module with JMH plugin
+- [ ] JMH microbenchmark for `OrderBook` insertions and cancellations
+- [ ] JMH microbenchmark for `MatchingEngine` place/cancel
+- [ ] Component benchmark for `OrderService` submit/reject flow
+- [ ] End-to-end harness using `LoadGenerator` with a `LoadResult` report
+- [ ] `BenchmarkRunnerTest` that at least compiles and sanity-checks benchmark classes
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] JMH benchmarks can be run from the new module
+- [ ] Baseline numbers are captured in `docs/performance/BENCHMARKS.md`
+**Tests:** sanity compile/run test for benchmark classes.
+**Benchmarks:** `OrderBookBenchmark`, `MatchingEngineBenchmark`, `OrderServiceBenchmark`.
+**Deliverables:** `finex-benchmarks` module + baseline results.
 
 ## Phase 18 — Profiling
 **Goal:** JFR/async-profiler/perf investigation of hotspots.
 **Dependencies:** Phase 17.
+**Status:** Not started.
+**Tasks:**
+- [ ] `ProfileRunner` command-line entry point that runs `LoadGenerator` under JFR
+- [ ] Document JFR and async-profiler commands in `docs/performance/PROFILING.md`
+- [ ] `ProfileRunnerTest` verifying JFR file creation (optional / skipped if unavailable)
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] A profiling harness exists and can be invoked from Maven/CLI
+**Tests:** `ProfileRunnerTest` (functional only).
+**Benchmarks:** None.
+**Deliverables:** `ProfileRunner` + profiling docs.
 
 ## Phase 19 — Performance Optimization
 **Goal:** Evidence-driven optimization cycles, documented in docs/performance/.
 **Dependencies:** Phase 18.
+**Status:** Not started.
+**Tasks:**
+- [ ] Run Phase 17 benchmarks and Phase 18 profiling to identify a hotspot
+- [ ] Implement one targeted optimization with before/after benchmark numbers
+- [ ] Record decision and results in `docs/performance/OPTIMIZATIONS.md`
+- [ ] Regression test ensuring correctness is preserved
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Benchmark numbers show measurable improvement or a documented decision that the baseline is acceptable
+- [ ] Optimization rationale is recorded
+**Tests:** existing + targeted regression test.
+**Benchmarks:** Re-run Phase 17 benchmarks.
+**Deliverables:** `docs/performance/OPTIMIZATIONS.md` entry.
 
 ## Phase 20 — Observability
 **Goal:** Micrometer + Prometheus metrics, Grafana dashboards.
 **Dependencies:** Phase 1 (infra), ongoing.
+**Status:** Not started.
+**Tasks:**
+- [ ] Add `micrometer-registry-prometheus` to `finex-api`
+- [ ] `MetricsService` recording orders submitted, rejected, trades, cancellations, and order latency
+- [ ] Wire metrics into `OrderService` and `OrderController`
+- [ ] Expose `/actuator/prometheus` endpoint (Spring Boot already exposes `/actuator`)
+- [ ] Grafana dashboard JSON for order/trade volume and latency
+- [ ] `MetricsTest` verifying counters increment
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Prometheus can scrape `localhost:8080/actuator/prometheus`
+- [ ] Custom counters and timers are visible in the endpoint
+**Tests:** `MetricsTest`.
+**Benchmarks:** None.
+**Deliverables:** Prometheus-compatible metrics + Grafana dashboard.
 
 ## Phase 21 — Failure Testing
 **Goal:** Chaos-style tests for invalid input, outages, restarts, corrupt/duplicate events.
 **Dependencies:** Most core phases.
+**Status:** Not started.
+**Tasks:**
+- [ ] `OrderServiceFailureTest` for null/blank/negative inputs, duplicate client order IDs
+- [ ] `EventStoreFailureTest` for corrupt/unknown event types and duplicate replays
+- [ ] `ReplayEngineTest` verifying replay is idempotent
+- [ ] Document failure scenarios in `docs/operations/FAILURE_TESTING.md`
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] Invalid inputs are rejected without corrupting state
+- [ ] Duplicate/corrupt events do not crash replay
+**Tests:** `OrderServiceFailureTest`, `EventStoreFailureTest`, `ReplayEngineTest`.
+**Benchmarks:** None.
+**Deliverables:** Failure test suite and runbook notes.
 
 ## Phase 22 — Security
 **Goal:** AuthN/AuthZ, account isolation, API keys, rate limiting, safe parsing.
 **Dependencies:** Phase 5, 8.
+**Status:** Not started.
+**Tasks:**
+- [ ] `ApiKeyService` mapping API keys to accounts (in-memory for baseline)
+- [ ] Spring Security filter validating `X-API-Key` header
+- [ ] `OrderController` uses authenticated account, falls back to request `accountId` for tests
+- [ ] Ensure an account can only cancel/query its own orders
+- [ ] `SecurityTest` verifying rejected missing/invalid API keys and account isolation
+- [ ] Document security model in `docs/operations/SECURITY.md`
+**Acceptance criteria:**
+- [ ] `mvn test` passes
+- [ ] API key auth is enforced on trading endpoints
+- [ ] Cross-account order access is denied
+**Tests:** `SecurityTest`.
+**Benchmarks:** None.
+**Deliverables:** API key auth, account isolation, security docs.
 
 ## Phase 23 — Documentation
 **Goal:** ARCHITECTURE.md, PROTOCOL.md, FINANCIAL_MODEL.md, DESIGN_DECISIONS.md finalized.

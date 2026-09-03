@@ -17,6 +17,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>4.1.1</spring-boot.version>
+        <jmh.version>1.37</jmh.version>
     </properties>
 
     <modules>
@@ -33,6 +34,7 @@
         <module>finex-clearing</module>
         <module>finex-settlement</module>
         <module>finex-load-generator</module>
+        <module>finex-benchmarks</module>
         <module>finex-api</module>
     </modules>
 
@@ -114,6 +116,17 @@
                 <groupId>com.finex</groupId>
                 <artifactId>finex-api</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjdk.jmh</groupId>
+                <artifactId>jmh-core</artifactId>
+                <version>${jmh.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjdk.jmh</groupId>
+                <artifactId>jmh-generator-annprocess</artifactId>
+                <version>${jmh.version}</version>
+                <scope>provided</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

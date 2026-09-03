@@ -90,6 +90,43 @@ public class OrderBook {
     }
 
     /**
+     * Replaces an existing resting order with a new copy (same id, price, and side) in-place.
+     * Useful for updating the remaining quantity of a partially filled order without a
+     * TreeMap remove/re-insert.
+     *
+     * @return true if the order was found and replaced
+     */
+    public boolean replaceOrder(long orderId, Order newOrder) {
+        if (newOrder == null) {
+            throw new IllegalArgumentException("newOrder must not be null");
+        }
+        Order old = orderById.get(orderId);
+        if (old == null) {
+            return false;
+        }
+        if (old.side() != newOrder.side()) {
+            throw new IllegalArgumentException("cannot replace order with different side");
+        }
+        if (old.price().compareTo(newOrder.price()) != 0) {
+            throw new IllegalArgumentException("cannot replace order with different price");
+        }
+
+        NavigableMap<BigDecimal, List<Order>> sideBook = sideBook(old.side());
+        List<Order> level = sideBook.get(old.price());
+        if (level == null) {
+            return false;
+        }
+        for (int i = 0; i < level.size(); i++) {
+            if (level.get(i).orderId() == orderId) {
+                level.set(i, newOrder);
+                orderById.put(orderId, newOrder);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Cancels an order by id. Returns true if the order was found and removed.
      */
     public boolean cancelOrder(long orderId) {

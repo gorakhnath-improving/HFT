@@ -156,6 +156,33 @@ class OrderBookTest {
         return snapshot;
     }
 
+    @Test
+    void replaceOrderUpdatesQuantityInPlace() {
+        OrderBook book = new OrderBook(SYMBOL);
+        Order original = limitBuy(1, 1, new BigDecimal("50000"));
+        book.addOrder(original);
+
+        Order partiallyFilled = new Order(
+                1L, "cid-1", 100L, SYMBOL, Side.BUY, OrderType.LIMIT,
+                new BigDecimal("50000"), new BigDecimal("1"), new BigDecimal("0.5"),
+                1L, T0, OrderStatus.PARTIALLY_FILLED);
+
+        assertThat(book.replaceOrder(1L, partiallyFilled)).isTrue();
+        assertThat(book.findOrder(1L)).hasValue(partiallyFilled);
+        assertThat(book.getBids()).map(Order::remainingQuantity).containsExactly(new BigDecimal("0.5"));
+    }
+
+    @Test
+    void replaceOrderRejectsDifferentPriceOrSide() {
+        OrderBook book = new OrderBook(SYMBOL);
+        book.addOrder(limitBuy(1, 1, new BigDecimal("50000")));
+
+        Order differentPrice = limitBuy(1, 1, new BigDecimal("51000"));
+        assertThatThrownBy(() -> book.replaceOrder(1L, differentPrice))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different price");
+    }
+
     private static Order limitBuy(long orderId, long sequence, BigDecimal price) {
         return new Order(
                 orderId, "cid-" + orderId, 100L, SYMBOL, Side.BUY, OrderType.LIMIT,

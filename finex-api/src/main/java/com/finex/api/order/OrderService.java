@@ -1,6 +1,7 @@
 package com.finex.api.order;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -8,8 +9,10 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.finex.api.metrics.MetricsService;
 import com.finex.clearing.ClearingService;
 import com.finex.common.domain.Order;
 import com.finex.common.domain.Trade;
@@ -88,6 +91,7 @@ public class OrderService implements CommandHandler {
     private final PortfolioService portfolioService = new PortfolioService();
     private final ClearingService clearingService = new ClearingService();
     private final SettlementService settlementService = new SettlementService(clearingService, ledger, portfolioService);
+    private MetricsService metricsService = new MetricsService();
 
     public OrderService() {
         this(new InMemoryEventStore(), 1);
@@ -105,6 +109,11 @@ public class OrderService implements CommandHandler {
         this.coordinator = new ShardCoordinator(shardCount);
     }
 
+    @Autowired(required = false)
+    public void setMetricsService(MetricsService metricsService) {
+        this.metricsService = metricsService != null ? metricsService : new MetricsService();
+    }
+
     public MatchResult submitOrder(OrderRequest request, Instant now) {
         validateRequest(request);
         SubmitOrderCommand command = new SubmitOrderCommand(
@@ -116,7 +125,18 @@ public class OrderService implements CommandHandler {
                 request.price(),
                 request.quantity());
         eventStore.append(CommandSerializer.toEvent(command, now, 0L));
-        return processSubmitOrder(command, now);
+
+        long start = System.nanoTime();
+        try {
+            MatchResult result = processSubmitOrder(command, now);
+            metricsService.recordSubmitted(result.trades().size());
+            return result;
+        } catch (OrderRejectedException e) {
+            metricsService.recordRejected();
+            throw e;
+        } finally {
+            metricsService.recordLatency(Duration.ofNanos(System.nanoTime() - start));
+        }
     }
 
     @Override
@@ -188,7 +208,11 @@ public class OrderService implements CommandHandler {
             if (live.isPresent()) {
                 CancelOrderCommand command = new CancelOrderCommand(live.get().accountId(), orderId);
                 eventStore.append(CommandSerializer.toEvent(command, now, 0L));
-                return doCancel(command, now);
+                boolean cancelled = doCancel(command, now);
+                if (cancelled) {
+                    metricsService.recordCancelled();
+                }
+                return cancelled;
             }
         }
         return false;
@@ -254,6 +278,13 @@ public class OrderService implements CommandHandler {
      */
     public Portfolio portfolio(long accountId) {
         return portfolioService.portfolio(accountId);
+    }
+
+    /**
+     * Exposes the metrics service for tests and diagnostics.
+     */
+    public MetricsService metricsService() {
+        return metricsService;
     }
 
     /**

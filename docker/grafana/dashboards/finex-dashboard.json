@@ -1,0 +1,78 @@
+{
+  "id": null,
+  "title": "FinEx Exchange Metrics",
+  "tags": ["finex"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Orders Submitted",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "finex_orders_submitted_total",
+          "legendFormat": "Submitted"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "Orders Rejected",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "finex_orders_rejected_total",
+          "legendFormat": "Rejected"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "Trades Executed",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "finex_trades_total",
+          "legendFormat": "Trades"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "id": 4,
+      "title": "Order Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(finex_order_latency_seconds_sum[1m]) / rate(finex_order_latency_seconds_count[1m])",
+          "legendFormat": "Avg Latency"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    }
+  ]
+}

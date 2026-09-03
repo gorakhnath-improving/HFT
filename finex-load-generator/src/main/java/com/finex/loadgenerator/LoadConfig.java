@@ -47,7 +47,7 @@ public record LoadConfig(
         return new LoadConfig(
                 List.of("BTC-USD"),
                 List.of(100L, 200L),
-                100,
+                20,
                 new BigDecimal("50000"),
                 new BigDecimal("0.01"),
                 new BigDecimal("100"),

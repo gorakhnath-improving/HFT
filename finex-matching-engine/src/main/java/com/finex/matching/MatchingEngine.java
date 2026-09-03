@@ -111,10 +111,11 @@ public class MatchingEngine {
             updatedOrders.put(current.orderId(), current);
             updatedOrders.put(updatedResting.orderId(), updatedResting);
 
-            // Replace the resting order in the book.
-            book.cancelOrder(resting.orderId());
+            // Replace the resting order in the book without a TreeMap remove/re-insert.
             if (updatedResting.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
-                book.addOrder(updatedResting);
+                book.replaceOrder(resting.orderId(), updatedResting);
+            } else {
+                book.cancelOrder(resting.orderId());
             }
         }
 
