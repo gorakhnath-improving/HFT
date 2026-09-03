@@ -4,6 +4,61 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 12: OPT-003 — Evidence-driven optimization (mark-to-market skip on unchanged price)
+
+**Scope:** Continuation of the post-master-plan performance engineering pass; same
+measure-first methodology as Session 11.
+
+**Done:**
+- Re-profiled the post-OPT-002 baseline with the committed
+  `SustainedSharedServiceDriver` and JDK Flight Recorder (`settings=profile`).
+- Identified the new top `com.finex.*` CPU hotspot: `com.finex.portfolio.Position.mark`
+  (112/1243 sampled leaf frames, 9.0%), called from
+  `PortfolioService.markToMarket(symbol, trade.price())` on every trade.
+- Root cause: `SettlementService.settle` called `markToMarket` after every trade with
+  the trade price as the mark price, and `PortfolioService.markToMarket` re-scanned
+  every account's position for that symbol even when the mark price was identical to
+  the previous mark. In the sustained driver, prices alternate in blocks of 500 orders,
+  so the same mark price was repeated 500 times per block.
+- **OPT-003:** added a `lastMarkPrices` cache to `PortfolioService`. `markToMarket`
+  returns immediately when the requested mark price equals the cached last mark price
+  for that symbol; otherwise it stores the new price and revalues all positions as
+  before. `Position.withTrade` (called by `applyTrade`) already computes the traded
+  accounts' `unrealizedPnl` at the mark price, so no extra work is needed when the
+  price is unchanged.
+- Added regression tests in `PortfolioServiceTest`:
+  - `markToMarketRevaluesPositionsWhenPriceChanges`
+  - `markToMarketIsIdempotentAtSamePrice`
+  - `markToMarketAtSamePriceStillCorrectlyUpdatesNewPosition`
+- Measured before/after on the sustained driver (3 runs each):
+  - Before (post-OPT-002): 98,944.11 ops/sec average
+  - After (post-OPT-003): 137,562.51 ops/sec average
+  - Delta: **+38,618.40 ops/sec, +39.0%**
+  - Cumulative vs original baseline (77,389.46): **+77.8%**
+- Re-profiled after the change: `Position.mark` / `PortfolioService.markToMarket` no
+  longer appear in the top CPU or allocation samples. `BigDecimal.valueOf` allocation
+  share dropped further from 14.8% (671/4520) to 10.6% (486/3039).
+- Updated `docs/performance/OPTIMIZATIONS.md` (OPT-003 entry), `OPTIMIZATION_EVIDENCE.md`
+  (raw per-run data and JFR findings), `BENCHMARKS.md` (post-OPT-003 numbers and the
+  sustained-driver table), `FINAL_BENCHMARK_REPORT.md` (updated interpretation and
+  honest verdict), `AGENT_CONTEXT.md`, and `TODO.md`.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no
+  change in financial outcomes on the deterministic workload.
+
+**Blockers:** None.
+
+**Next session should:**
+- Profile the new top `com.finex.*` CPU frames (`BinaryCodec.encodePayload`,
+  `MatchingEngine.placeOrder`, `InMemoryLedger.post`, `SettlementService.settle`) and
+  identify the next highest-value optimization. Likely candidate: event-log/ledger
+  allocation reduction, `BigDecimal` hot-path cleanup, or metrics offloading. Always
+  evidence first.
+
+---
+
 ## 2026-09-03 — Session 11: OPT-002 — Evidence-driven optimization (market-data snapshot elimination)
 
 **Scope:** Post-master-plan performance engineering pass, following a strict

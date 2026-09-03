@@ -147,11 +147,106 @@ in both).
 - `finex-api/src/main/java/com/finex/api/order/OrderService.java`
 - `finex-api/src/test/java/com/finex/api/order/OrderServiceMarketDataTest.java` (new)
 
-**Next hotspot identified (not yet actioned):** With OPT-002 applied, the JFR CPU profile's
-new top `com.finex.*` frame is `com.finex.portfolio.Position.mark` (112 samples), called
-from `PortfolioService.markToMarket`, which revalues *every* position on *every* trade.
-This is legitimate financial work (unlike the discarded market-data snapshot), so it is a
-candidate for a future OPT-003 investigation (e.g. only marking the symbol's own positions,
-or batching), not a correctness concern.
+**Next hotspot identified:** `com.finex.portfolio.Position.mark` (112 samples), called
+from `PortfolioService.markToMarket` — resolved in **OPT-003**.
+
+**Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-003 — Skip mark-to-market revaluation when the mark price has not changed
+
+**Component:** `finex-portfolio` `PortfolioService` (`markToMarket`, `applyTrade`).
+
+**Problem:** `SettlementService.settle` calls `portfolioService.markToMarket(symbol,
+trade.price())` after *every* trade. The previous `PortfolioService.markToMarket`
+implementation scanned all accounts, looked up the position for that symbol, and called
+`Position.mark(markPrice)` even when `markPrice` was identical to the last mark price.
+
+In the OPT-002 profile this became the top `com.finex.*` CPU hotspot (`Position.mark`,
+112 execution samples) and a major allocation source for `BigDecimal.valueOf`. The driver
+workload (alternating price blocks of 500 orders each) meant `markToMarket` was called
+hundreds of thousands of times at the same two mark prices, repeatedly recomputing the
+same `(markPrice - avgPrice) * quantity` expression for every position holder.
+
+**Evidence:** JFR profiling immediately after OPT-002 (JDK Flight Recorder,
+`settings=profile`) on the sustained 1.5M-order driver:
+
+- CPU (`jdk.ExecutionSample`, leaf frame): `com.finex.portfolio.Position.mark` was the
+  #1 `com.finex.*` hotspot with **112/1243** leaf samples (9.0% of all CPU samples).
+  No other `com.finex.*` frame was above 12 samples.
+- Allocation (`jdk.ObjectAllocationSample`, leaf frame): `java.math.BigDecimal.valueOf`
+  was still 14.8% (671/4520) of allocations after OPT-002, and `Position.mark` plus
+  the surrounding `PortfolioService.markToMarket` scan were the dominant remaining
+  `BigDecimal` producers.
+
+**Hypothesis:** `Position.withTrade` (called by `applyTrade` for the buyer and seller
+immediately before `markToMarket`) already computes `newUnrealized =
+newQty * (markPrice - newAvgPrice)` for those two accounts at the current mark price.
+Therefore, when `markToMarket` is called with the *same* mark price as the previous
+invocation, all other positions for that symbol are unchanged and do not need
+revaluation. A cheap `lastMarkPrices` cache per symbol can short-circuit the entire
+all-accounts scan in that common case.
+
+**Change:**
+- Added `Map<String, BigDecimal> lastMarkPrices` to `PortfolioService`.
+- `markToMarket(symbol, markPrice)` now returns immediately (and does not touch any
+  account map) when `markPrice` equals the cached last mark price for that symbol.
+- On a new/cached-changed mark price, it stores `markPrice` and revalues all positions
+  for the symbol as before.
+- `Position.withTrade` still updates the two traded accounts at the mark price, so even
+  when `markToMarket` is skipped, those positions have the correct `unrealizedPnl`.
+
+**Benchmark (same driver as OPT-002: single shared `OrderService`, 1,500,000 orders,
+500 accounts, 750,000 trades in every run):**
+
+| Run | After OPT-002 (ops/s) | After OPT-003 (ops/s) |
+|-----|----------------------:|------------------------:|
+| 1 | 98,944.11 | 136,847.79 |
+| 2 | 98,944.11 | 142,377.03 |
+| 3 | 98,944.11 | 133,462.71 |
+| **Average** | **98,944.11** | **137,562.51** |
+
+Baseline (pre-OPT-002): **77,389.46 ops/s**.
+
+**Delta:** +38,618.40 ops/s from OPT-002, **+39.0%**. Cumulative vs baseline:
+**+77.8%** (77,389.46 → 137,562.51 ops/s).
+
+**Latency/CPU result:** `Position.mark` no longer appears anywhere in the top CPU samples
+after OPT-003 (`grep -c Position.mark` → 0 in `jdk.ExecutionSample`). The top
+`com.finex.*` CPU frames are now `BinaryCodec.encodePayload` (9), `MatchingEngine.placeOrder`
+(7), `OrderService.processSubmitOrder` (7), and `InMemoryLedger.post` (6) — the workload is
+far more balanced and no single method dominates.
+
+**Allocation result:** `BigDecimal.valueOf` share dropped further from 14.8% (671/4520)
+after OPT-002 to 10.6% (486/3039) after OPT-003. Total sampled allocations for the same
+1.5M-order run dropped from 4520 to 3039 samples.
+
+**Correctness result:** PASS.
+- `finex-portfolio` `PortfolioServiceTest` passes (5/5) including three new tests:
+  - `markToMarketRevaluesPositionsWhenPriceChanges` — confirms revaluation still
+    happens when mark price moves.
+  - `markToMarketIsIdempotentAtSamePrice` — confirms no state mutation or wrong
+    PnL when the same mark price is repeated.
+  - `markToMarketAtSamePriceStillCorrectlyUpdatesNewPosition` — confirms a new
+    position created by `applyTrade` at the same mark price already carries the
+    correct `unrealizedPnl`.
+- Full `mvn test` across all 16 modules green after OPT-003.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no change
+  in final portfolio/ledger/cash behavior on the deterministic workload.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-portfolio/src/main/java/com/finex/portfolio/PortfolioService.java`
+- `finex-portfolio/src/test/java/com/finex/portfolio/PortfolioServiceTest.java`
+
+**Next hotspot identified (not yet actioned):** After OPT-003 the top `com.finex.*`
+CPU frames are spread across `BinaryCodec.encodePayload`, `MatchingEngine.placeOrder`,
+`InMemoryLedger.post`, and `SettlementService.settle`. The next single large remaining
+allocation source is `BinaryCodec.encodePayload` and the per-trade event/ledger entry
+object creation. A strong candidate for OPT-004 is reducing allocation in the event-log
+path (e.g. pooled buffers or primitive serialization), but only after profiling on the
+new baseline confirms it is the actual bottleneck.
 
 **Status:** COMPLETED / KEPT.

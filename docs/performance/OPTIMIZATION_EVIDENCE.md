@@ -86,3 +86,40 @@ measurement with normal run-to-run variance).
   mark-to-market work, not wasted work. Candidate for a future OPT-003 investigation.
 
 See `OPTIMIZATIONS.md` for the full write-up, correctness verification, and decision.
+
+## OPT-003 — before/after
+
+Same driver, environment, and parameters as OPT-002. Baseline is the "after OPT-002"
+measurement above (98,944.11 ops/sec average); the "before OPT-003" column is the
+post-OPT-002 state.
+
+| Run | Before OPT-003 (ops/s) | After OPT-003 (ops/s) |
+|-----|--------------------------:|------------------------:|
+| 1 | 98,944.11 | 136,847.79 |
+| 2 | 98,944.11 | 142,377.03 |
+| 3 | 98,944.11 | 133,462.71 |
+| **Average** | **98,944.11** | **137,562.51** |
+
+Delta vs OPT-002: **+38,618.40 ops/s, +39.0%**. Cumulative delta vs the original
+pre-optimization baseline (77,389.46 ops/sec): **+60,173.05 ops/s, +77.8%**.
+
+Trade count remains 750,000 in every run.
+
+### JFR findings (before, post-OPT-002)
+
+- Top CPU leaf hotspot: `com.finex.portfolio.Position.mark` — 112/1243 samples (9.0% of
+  all CPU samples), more than 9x the next `com.finex.*` frame.
+- Allocation: `BigDecimal.valueOf` = 14.8% (671/4520) of sampled allocations;
+  `PortfolioService.markToMarket` scan + `Position.mark` were the dominant remaining
+  `BigDecimal` producers.
+
+### JFR findings (after)
+
+- `Position.mark` / `PortfolioService.markToMarket` do not appear anywhere in the top CPU
+  or allocation samples (`grep -c "Position.mark"` → 0).
+- `BigDecimal.valueOf` share dropped further to 10.6% (486/3039); total allocation
+  samples dropped from 4520 to 3039 for the same workload.
+- New top `com.finex.*` CPU frames are spread: `BinaryCodec.encodePayload` (9),
+  `MatchingEngine.placeOrder` (7), `OrderService.processSubmitOrder` (7),
+  `InMemoryLedger.post` (6), `SustainedSharedServiceDriver.run` (5) — no single dominant
+  bottleneck.

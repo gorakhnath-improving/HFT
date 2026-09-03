@@ -1,10 +1,10 @@
 # AGENT CONTEXT (keep short)
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle, OPT-002 completed). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-002 (skip market-data snapshot construction with no subscribers)
-completed, measured, and documented. Next candidate identified: `Position.mark` cost in
-`PortfolioService.markToMarket` (not yet actioned).
+cycle, OPT-003 completed). This is ongoing/iterative work, not a numbered master-plan phase.
+**Current task:** OPT-003 (skip `markToMarket` when mark price is unchanged) completed,
+measured, and documented. Next candidate: event-log / `BinaryCodec.encodePayload` cost
+(not yet actioned).
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -16,7 +16,7 @@ completed, measured, and documented. Next candidate identified: `Position.mark` 
 - `finex-event-log` — append-only events, replay
 - `finex-shard` — symbol sharding
 - `finex-ledger` — double-entry ledger
-- `finex-portfolio` — positions and P&L
+- `finex-portfolio` — positions and P&L (`lastMarkPrices` cache added in OPT-003)
 - `finex-clearing` — trade clearing and fees
 - `finex-settlement` — settlement orchestration
 - `finex-load-generator` — configurable load generator
@@ -31,7 +31,14 @@ completed, measured, and documented. Next candidate identified: `Position.mark` 
   (`BookUpdateFactory.aggregate`) when there are no subscribers. JFR-measured: was 56.8%
   of all sampled allocations and the #1 CPU hotspot; removed entirely. Measured
   throughput improvement ~+24% to +28% on a sustained 1.5M-order shared-`OrderService`
-  workload. See `docs/performance/OPTIMIZATIONS.md` and `OPTIMIZATION_EVIDENCE.md`.
+  workload.
+- OPT-003 (this session): added a `lastMarkPrices` cache to `PortfolioService` so
+  `markToMarket` skips a full all-accounts scan when the mark price has not changed.
+  This was the top CPU frame after OPT-002 (`Position.mark`, 9% of CPU samples) and a
+  major `BigDecimal` allocator. After the fix it does not appear in the top CPU or
+  allocation samples. Throughput improved a further ~+39% (98,944 -> 137,563 ops/sec
+  average on the sustained driver). Cumulative improvement vs baseline: ~+78%.
+- Full `mvn test` green across all 16 modules after OPT-003.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -44,9 +51,9 @@ pom-configured `BenchmarkRunner`); use `java -cp <classpath>` directly to run
 for the exact reproduction commands).
 
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
-and `OPTIMIZATION_EVIDENCE.md` for the OPT-002 before/after evidence.
+and `OPTIMIZATION_EVIDENCE.md` for the OPT-002 / OPT-003 before/after evidence.
 
-**Last successful build:** `mvn test` green (all 16 modules) after OPT-002.
+**Last successful build:** `mvn test` green (all 16 modules) after OPT-003.
 
 **Important commands:**
 ```bash
@@ -58,7 +65,7 @@ mvn test                                # run full correctness suite
 mvn -q -pl finex-benchmarks dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" com.finex.benchmarks.BenchmarkRunner
 
-# Long, low-variance evidence driver (used for OPT-002)
+# Long, low-variance evidence driver (used for OPT-002 / OPT-003)
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
   com.finex.benchmarks.SustainedSharedServiceDriver 1500000 500
 

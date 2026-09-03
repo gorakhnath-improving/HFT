@@ -18,6 +18,7 @@ public class PortfolioService {
 
     private final Map<Long, BigDecimal> cash = new ConcurrentHashMap<>();
     private final Map<Long, Map<String, Position>> positions = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> lastMarkPrices = new ConcurrentHashMap<>();
 
     /**
      * Applies the position changes of a trade to both the buyer and seller. Cash is updated
@@ -44,6 +45,11 @@ public class PortfolioService {
 
     /**
      * Revalues all positions for {@code symbol} across all accounts at {@code markPrice}.
+     *
+     * <p>This is a no-op when the {@code markPrice} is the same as the last revaluation for
+     * that symbol, because positions for the two accounts involved in a trade have already
+     * been updated by {@link #applyTrade} at that mark price, and all other positions are
+     * unchanged unless the mark price itself has moved.
      */
     public void markToMarket(String symbol, BigDecimal markPrice) {
         if (symbol == null || symbol.isBlank()) {
@@ -52,6 +58,11 @@ public class PortfolioService {
         if (markPrice == null || markPrice.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("markPrice must be positive");
         }
+        BigDecimal previous = lastMarkPrices.get(symbol);
+        if (previous != null && previous.compareTo(markPrice) == 0) {
+            return;
+        }
+        lastMarkPrices.put(symbol, markPrice);
         for (Map<String, Position> accountPositions : positions.values()) {
             Position position = accountPositions.get(symbol);
             if (position != null) {

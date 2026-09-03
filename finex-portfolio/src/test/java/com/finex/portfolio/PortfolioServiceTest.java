@@ -56,4 +56,56 @@ class PortfolioServiceTest {
         assertThat(seller.positions().get(0).realizedPnl()).isEqualTo(new BigDecimal("5000"));
         assertThat(seller.cash()).isEqualTo(new BigDecimal("1005000")); // 950k + 55k
     }
+
+    @Test
+    void markToMarketRevaluesPositionsWhenPriceChanges() {
+        PortfolioService service = new PortfolioService();
+        Trade open = new Trade(1L, 1L, 2L, "BTC-USD",
+                new BigDecimal("50000"), new BigDecimal("1"), NOW, 100L, 200L, 1L);
+        service.applyTrade(open, open.price());
+
+        // mark price moves to 55k: long position should show +5k unrealized.
+        service.markToMarket("BTC-USD", new BigDecimal("55000"));
+
+        Portfolio buyer = service.portfolio(100L);
+        assertThat(buyer.positions().get(0).unrealizedPnl()).isEqualTo(new BigDecimal("5000"));
+
+        // mark price moves to 45k: long position should show -5k unrealized.
+        service.markToMarket("BTC-USD", new BigDecimal("45000"));
+        assertThat(service.portfolio(100L).positions().get(0).unrealizedPnl())
+                .isEqualTo(new BigDecimal("-5000"));
+    }
+
+    @Test
+    void markToMarketIsIdempotentAtSamePrice() {
+        PortfolioService service = new PortfolioService();
+        Trade open = new Trade(1L, 1L, 2L, "BTC-USD",
+                new BigDecimal("50000"), new BigDecimal("1"), NOW, 100L, 200L, 1L);
+        service.applyTrade(open, open.price());
+        service.markToMarket("BTC-USD", new BigDecimal("55000"));
+
+        Position first = service.portfolio(100L).positions().get(0);
+        assertThat(first.unrealizedPnl()).isEqualTo(new BigDecimal("5000"));
+
+        // Calling again at the same mark price must not recompute and must not mutate state.
+        service.markToMarket("BTC-USD", new BigDecimal("55000"));
+        Position second = service.portfolio(100L).positions().get(0);
+
+        assertThat(second.unrealizedPnl()).isEqualTo(new BigDecimal("5000"));
+    }
+
+    @Test
+    void markToMarketAtSamePriceStillCorrectlyUpdatesNewPosition() {
+        PortfolioService service = new PortfolioService();
+        Trade open = new Trade(1L, 1L, 2L, "BTC-USD",
+                new BigDecimal("50000"), new BigDecimal("1"), NOW, 100L, 200L, 1L);
+        service.applyTrade(open, new BigDecimal("55000")); // open at 55k mark
+
+        // markToMarket is skipped because the mark price hasn't changed, but the position
+        // was already created with the correct unrealized PnL by applyTrade.
+        Portfolio buyer = service.portfolio(100L);
+        Position position = buyer.positions().get(0);
+        assertThat(position.avgPrice()).isEqualTo(new BigDecimal("50000"));
+        assertThat(position.unrealizedPnl()).isEqualTo(new BigDecimal("5000"));
+    }
 }
