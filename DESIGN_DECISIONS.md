@@ -389,3 +389,86 @@ buys above the base price) guarantees trades and leaves book depth for later ass
 - `finex-load-generator` is part of the reactor and runs `LoadGeneratorTest` in `mvn test`.
 - `LoadResult` is serializable and suitable for future benchmark reporting.
 - A future CLI main class can call `LoadGenerator.run(config)` directly.
+
+---
+
+## ADR-010: Benchmarking and profiling harness — JMH + JFR
+
+**Context:** Phases 17-18 need reproducible benchmarks and profiling to guide optimization.
+
+**Options:**
+- Hand-written timing loops: quick but prone to JVM warmup/GC bias.
+- JMH: the standard JVM benchmark harness; handles warmup, dead-code elimination, and
+  blackholes.
+- External load tools (k6, JMeter): exercise HTTP but not internal hot path classes.
+
+**Decision:** Add a dedicated `finex-benchmarks` module with JMH for micro and component
+benchmarks, plus a `ProfileRunner` that wraps a `LoadGenerator` run with JDK Flight Recorder.
+
+**Reason:** JMH gives trustworthy per-component numbers; `ProfileRunner` gives a full-call-stack
+view of the end-to-end workload. Both are invoked from Maven/CLI so they are easy to repeat.
+
+**Tradeoffs:**
+- JMH adds an annotation processor and requires tuning annotation paths.
+- Forked runs are more reliable but harder to run via `exec:java`; the baseline uses
+  same-JVM runs for convenience.
+- End-to-end `LoadGenerator` benchmarks allocate a fresh `OrderService` per invocation, so
+  they include construction cost.
+
+**Consequences:**
+- `finex-benchmarks` depends on core modules and `finex-load-generator`.
+- Baseline numbers live in `docs/performance/BENCHMARKS.md`; optimization rationale lives in
+  `docs/performance/OPTIMIZATIONS.md`.
+- `ProfileRunner` output is a `.jfr` file that can be opened in JDK Mission Control.
+
+---
+
+## ADR-011: Observability — Micrometer + Prometheus
+
+**Context:** Phase 20 needs runtime metrics for throughput, rejections, and latency.
+
+**Options:**
+- Hand-rolled counters and an HTTP `/metrics` endpoint.
+- Dropwizard Metrics.
+- Micrometer with Prometheus registry.
+
+**Decision:** Use Micrometer with `micrometer-registry-prometheus` because it integrates
+with Spring Boot actuator and is the de-facto standard for JVM metrics.
+
+**Reason:** Minimal integration work, standardized metric format, and easy Grafana consumption.
+
+**Tradeoffs:**
+- `Timer` uses time buckets; for nanosecond-level matching latency aHdrHistogram or custom
+  ring buffer may be needed later.
+- Metrics add per-call overhead; in the HFT hot path they would likely be sampled or moved
+  off the critical thread.
+
+**Consequences:**
+- Custom counters under `finex.orders.*` and `finex.trades` plus `finex.order.latency`.
+- `/actuator/prometheus` is exposed for Prometheus scraping.
+- Grafana dashboard JSON is provisioned in `docker/grafana/dashboards/`.
+
+---
+
+## ADR-012: Security — API-key authentication and account isolation
+
+**Context:** Phase 22 requires authentication and authorization for trading endpoints.
+
+**Options:**
+- Spring Security with JWT/OAuth2: industry standard but heavy for a baseline.
+- Servlet filter validating an `X-API-Key` header and mapping it to an account.
+
+**Decision:** Implement a lightweight `OncePerRequestFilter` plus `ApiKeyService`.
+
+**Reason:** It satisfies the requirement with no new dependencies beyond Spring Web and is
+easy to understand and test. A real deployment can replace or wrap it with Spring Security.
+
+**Tradeoffs:**
+- No token expiry/rotation; keys are in-memory.
+- No role-based access control; a single key maps to one account.
+
+**Consequences:**
+- `/api/v1/orders/**` requires `X-API-Key`.
+- `OrderController` rejects requests whose `accountId` does not match the key's account and
+  filters get/cancel by owner.
+- `OrderResponse` now includes `accountId` to support isolation checks.

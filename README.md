@@ -6,11 +6,10 @@ demonstrate both **FinTech correctness** (ledger, risk, clearing, settlement, au
 profiling). Full scope and roadmap: [`PROJECT_PLAN.md`](PROJECT_PLAN.md) (derived from
 [`../Master Plan.md`](../Master%20Plan.md)).
 
-> **Status:** Phase 16 — Load Generator completed (Phases 12-16 batch). Portfolio / P&L,
-> clearing, settlement, replay verification, and a configurable load generator are now
-> integrated on top of the existing matching, risk, market-data, event-log, sharding, and
-> ledger stack. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md) for the current task and
-> [`PROGRESS.md`](PROGRESS.md) for the session log.
+> **Status:** Phases 17-22 completed. Benchmarks (JMH), profiling (JFR), an evidence-driven
+> optimization pass, Micrometer/Prometheus observability, chaos-style failure tests, and
+> API-key account isolation are now integrated. See [`AGENT_CONTEXT.md`](AGENT_CONTEXT.md)
+> for the current task and [`PROGRESS.md`](PROGRESS.md) for the session log.
 
 ## Project layout
 
@@ -29,17 +28,17 @@ finex/
 ├── finex-clearing/        trade clearing and fee schedule
 ├── finex-settlement/      settlement orchestration
 ├── finex-load-generator/  configurable order-load harness
-├── finex-api/             Spring Boot REST app (administrative/developer-facing, not the hot path)
+├── finex-benchmarks/      JMH micro/component/end-to-end benchmarks and JFR profiling
+├── finex-api/             Spring Boot REST app, metrics, and API-key security
 ├── docker/                config for containerized infra (prometheus, grafana)
 ├── docker-compose.yml     infra dependencies: postgres, prometheus, grafana
-├── PROJECT_PLAN.md      phased roadmap
-├── PROGRESS.md          session-by-session log
-├── TODO.md              active task queue (current phase only)
-├── AGENT_CONTEXT.md     short-form current state for fast pickup
-└── DESIGN_DECISIONS.md  ADRs
+├── docs/                  architecture, protocol, financial model, performance, security
+├── PROJECT_PLAN.md        phased roadmap
+├── PROGRESS.md            session-by-session log
+├── TODO.md                active task queue (current phase only)
+├── AGENT_CONTEXT.md       short-form current state for fast pickup
+└── DESIGN_DECISIONS.md    ADRs
 ```
-
-More modules may be added as later phases begin (e.g. `finex-portfolio`, `finex-clearing`).
 
 ## Prerequisites
 
@@ -86,18 +85,24 @@ curl -s localhost:8080/api/v1/health | jq
 
 ## Trading API examples
 
-Submit a limit sell:
+Trading endpoints require the `X-API-Key` header for the account in the request body
+(your environment must register the key, see `ApiKeyService`). Public endpoints such as
+order books and actuators do not require a key.
+
+Submit a limit sell for account `100`:
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/orders \
+  -H 'X-API-Key: your-key-for-account-100' \
   -H 'Content-Type: application/json' \
   -d '{"clientOrderId":"sell-1","symbol":"BTC-USD","side":"SELL","type":"LIMIT","price":"50000","quantity":"1","accountId":100}' | jq
 ```
 
-Submit a matching limit buy:
+Submit a matching limit buy for account `200`:
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/orders \
+  -H 'X-API-Key: your-key-for-account-200' \
   -H 'Content-Type: application/json' \
   -d '{"clientOrderId":"buy-1","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":"50000","quantity":"1","accountId":200}' | jq
 ```
@@ -105,16 +110,18 @@ curl -s -X POST localhost:8080/api/v1/orders \
 Query an order:
 
 ```bash
-curl -s localhost:8080/api/v1/orders/1 | jq
+curl -s localhost:8080/api/v1/orders/1 \
+  -H 'X-API-Key: your-key-for-account-100' | jq
 ```
 
 Cancel an order:
 
 ```bash
-curl -s -X DELETE localhost:8080/api/v1/orders/1 | jq
+curl -s -X DELETE localhost:8080/api/v1/orders/1 \
+  -H 'X-API-Key: your-key-for-account-100' | jq
 ```
 
-Get an order-book snapshot:
+Get an order-book snapshot (public):
 
 ```bash
 curl -s localhost:8080/api/v1/order-books/BTC-USD | jq
@@ -124,8 +131,36 @@ A rejected order returns `400 Bad Request` with `status: REJECTED` and a `reject
 
 ```bash
 curl -s -X POST localhost:8080/api/v1/orders \
+  -H 'X-API-Key: your-key-for-account-100' \
   -H 'Content-Type: application/json' \
   -d '{"clientOrderId":"big","symbol":"BTC-USD","side":"BUY","type":"LIMIT","price":"50000","quantity":"1000","accountId":100}' | jq
+```
+
+## Metrics
+
+Prometheus-compatible metrics are exposed on `/actuator/prometheus`:
+
+```bash
+curl -s localhost:8080/actuator/prometheus | grep finex
+```
+
+Grafana is configured at http://localhost:3000 with a sample FinEx dashboard.
+
+## Benchmarks
+
+Run the JMH suite:
+
+```bash
+mvn -pl finex-benchmarks -DskipTests package exec:java \
+  -Dexec.mainClass=com.finex.benchmarks.BenchmarkRunner
+```
+
+Capture a JFR profile:
+
+```bash
+mvn -pl finex-benchmarks exec:java \
+  -Dexec.mainClass=com.finex.benchmarks.ProfileRunner \
+  -Dexec.args="/tmp/finex-profile.jfr"
 ```
 
 ## Risk limits

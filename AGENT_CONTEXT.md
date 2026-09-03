@@ -1,8 +1,7 @@
 # AGENT CONTEXT (keep short)
 
-**Current phase:** Phase 22 — Security / API keys / account isolation (batched: Phases 17-22
-requested; all now completed)
-**Current task:** All requested phases complete; full test suite green.
+**Current phase:** Phase 24 — Final Benchmark Campaign completed; all 24 phases now done.
+**Current task:** All requested project work is complete. `mvn test` is green.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -18,26 +17,24 @@ requested; all now completed)
 - `finex-clearing` — trade clearing and fees
 - `finex-settlement` — settlement orchestration
 - `finex-load-generator` — configurable load generator
+- `finex-benchmarks` — JMH/component/end-to-end benchmarks, JFR profiling
 - `finex-api` — `OrderService` + controllers + metrics + security filters
-- `finex-benchmarks` — JMH/component/end-to-end benchmarks and JFR profiling harness
 
 **Completed milestones:**
-- Phases 1-16 committed.
-- Phase 17: JMH benchmarks with baseline numbers in `docs/performance/BENCHMARKS.md`.
-- Phase 18: `ProfileRunner` JFR harness and `docs/performance/PROFILING.md`.
-- Phase 19: In-place `OrderBook.replaceOrder` optimization recorded in `OPTIMIZATIONS.md`.
-- Phase 20: Micrometer metrics, Prometheus endpoint, Grafana dashboard.
-- Phase 21: Failure/chaos tests for invalid input and corrupt events.
-- Phase 22: API-key authentication and account isolation.
+- Phases 1-22 implemented and committed.
+- Phase 23: consolidated `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md`, `docs/FINANCIAL_MODEL.md`,
+  added ADR-010/011/012, updated `README.md`.
+- Phase 24: added `MultiThreadedLoadGeneratorBenchmark`, produced
+  `docs/performance/FINAL_BENCHMARK_REPORT.md` with honest 1M/sec assessment and roadmap.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
 **Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
 containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
 
-**Current benchmark:** See `docs/performance/BENCHMARKS.md`.
+**Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md` and `BENCHMARKS.md`.
 
-**Last successful build:** `mvn test` green after Phase 22.
+**Last successful build:** `mvn test` green after Phase 24.
 
 **Important commands:**
 ```bash

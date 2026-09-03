@@ -4,6 +4,44 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 10: Phases 23-24 — Documentation Consolidation and Final Benchmark Campaign
+
+**Phase:** 23 → 24 (done)
+
+**Done:**
+- **Phase 23 — Documentation:**
+  - Filled `docs/ARCHITECTURE.md` with module boundaries, data flow, concurrency model,
+    security, and observability.
+  - Filled `docs/PROTOCOL.md` with frame layout, primitive encodings, message types,
+    and usage example.
+  - Filled `docs/FINANCIAL_MODEL.md` with order lifecycle, risk limits, clearing,
+    settlement, ledger, and portfolio.
+  - Added ADR-010 (benchmarks/profiling), ADR-011 (observability), and ADR-012 (security)
+    to `DESIGN_DECISIONS.md`.
+  - Updated `README.md` with current status, API-key examples, metrics, and benchmark
+    commands.
+- **Phase 24 — Final Benchmark Campaign:**
+  - Added `MultiThreadedLoadGeneratorBenchmark` (4 threads, isolated `OrderService` per
+    invocation).
+  - Re-ran the full JMH suite and captured order-level throughput numbers.
+  - Wrote `docs/performance/FINAL_BENCHMARK_REPORT.md` with an honest assessment: pure
+    matching reaches ~7M placements/sec, isolated end-to-end ~1M-2.7M orders/sec, but
+    shared `OrderService` is ~53k/sec due to `BigDecimal`/`TreeMap`/synchronous
+    settlement overhead. Included a concrete roadmap to a real 1M/sec shared engine.
+  - Updated `docs/performance/BENCHMARKS.md` with the latest results.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS across all modules.
+
+**Blockers:** None.
+
+**Next session should:**
+- Project is complete per the master plan. Any further work is follow-up optimization or
+  deployment hardening.
+
+---
+
 ## 2026-09-03 — Session 9: Phases 17-22 — Benchmarks, Profiling, Optimization, Observability, Failure Testing, Security
 
 **Phase:** 17 → 22 (done)

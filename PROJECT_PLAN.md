@@ -444,10 +444,32 @@ full/partial fill scenario.
 ## Phase 23 — Documentation
 **Goal:** ARCHITECTURE.md, PROTOCOL.md, FINANCIAL_MODEL.md, DESIGN_DECISIONS.md finalized.
 **Dependencies:** Most phases.
+**Status:** Done.
+**Tasks:**
+- [x] Write `docs/ARCHITECTURE.md` with module boundaries, data flow, concurrency, security, and observability
+- [x] Write `docs/PROTOCOL.md` with frame layout, primitive encodings, message types, and usage
+- [x] Write `docs/FINANCIAL_MODEL.md` with lifecycle, risk, clearing, settlement, ledger, and portfolio
+- [x] Add ADR-010 (benchmarks/profiling), ADR-011 (observability), ADR-012 (security)
+- [x] Update `README.md` with current status, API-key examples, metrics, and benchmark commands
+**Acceptance criteria:**
+- [x] All placeholder docs replaced
+- [x] Design decisions are documented
+**Deliverables:** Updated `docs/` and `README.md`.
 
 ## Phase 24 — Final Benchmark Campaign
 **Goal:** Full performance test matrix (cores x symbols x workloads), honest 1M/sec report.
 **Dependencies:** All prior phases.
+**Status:** Done.
+**Tasks:**
+- [x] Add `MultiThreadedLoadGeneratorBenchmark` (4 threads, isolated `OrderService` per invocation)
+- [x] Re-run JMH suite and collect order-level throughput numbers
+- [x] Write `docs/performance/FINAL_BENCHMARK_REPORT.md` with honest assessment and roadmap to 1M/sec
+- [x] Update `docs/performance/BENCHMARKS.md` with latest numbers
+**Acceptance criteria:**
+- [x] `mvn test` passes
+- [x] Report explains current bottleneck and required architectural changes
+**Benchmarks:** `MultiThreadedLoadGeneratorBenchmark` and `BenchmarkRunner`.
+**Deliverables:** `FINAL_BENCHMARK_REPORT.md` and updated `BENCHMARKS.md`.
 
 ---
 Each phase's atomic tasks will be expanded into TODO.md just before that phase starts,
