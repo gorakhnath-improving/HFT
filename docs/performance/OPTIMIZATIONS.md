@@ -466,3 +466,79 @@ overhead or the per-trade `LedgerEntry` object churn — whichever fresh profili
 new baseline identifies as the bigger contributor.
 
 **Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-007 — Reduce event-log serialization allocation
+
+**Component:** `finex-event-log` (`Event`, `InMemoryEventStore`, `CommandSerializer`),
+`finex-protocol` (`BinaryCodec`), `finex-api` (`OrderService`).
+
+**Problem:** Profiling after OPT-006 showed the next allocation hotspots on the
+`OrderService` path were `CommandSerializer.toEvent` and `Event.<init>`. `OrderService`
+called `CommandSerializer.toEvent(command, now, 0L)` for every submit/cancel, which:
+- Created an intermediate `HeapByteBuffer` in `BinaryCodec.encode`.
+- Copied the buffer into a `byte[]` in `CommandSerializer`.
+- Wrapped that `byte[]` in an `Event` whose constructor cloned it.
+- Passed the `Event` to `InMemoryEventStore.append`, which called `event.payload()`
+  (another clone) and constructed a second `Event` (a third clone).
+That was multiple byte-array copies and short-lived objects per order.
+
+**Hypothesis:** The store can assign the sequence id and build the stored `Event` from a
+raw payload, and the `Event` constructor can trust that the hot path passes a freshly
+allocated `byte[]`.
+
+**Change:**
+- Added `BinaryCodec.encodeToBytes(ProtocolMessage)`: writes a length-prefixed frame to a
+  `ThreadLocal<ByteArrayOutputStream` and returns the final `byte[]` directly, patching
+  the 4-byte length prefix once the payload size is known. This removes the
+  `ByteBuffer.allocate` and `ByteBuffer.get` copy that `CommandSerializer.toEvent` used.
+- Added `CommandSerializer.toPayload(SubmitOrderCommand|CancelOrderCommand)` returning a
+  raw `byte[]`.
+- Added `EventStore.append(Instant timestamp, String type, byte[] payload)` and
+  implemented it in `InMemoryEventStore` to assign the sequence id and build the stored
+  `Event` directly.
+- Updated `OrderService.submitOrder` and `OrderService.cancelOrder` to use the raw-payload
+  overload.
+- Removed the defensive `payload.clone()` from the `Event` canonical constructor and
+  from `payload()`, because the hot path never reuses the source array. The older
+  `InMemoryEventStore.append(Event)` compatibility path still clones once to preserve the
+  store boundary.
+- Updated `EventStoreTest.eventsAreImmutable` to pass a clone to `Event`, so the test
+  still verifies that external mutation of the caller's array does not affect the store.
+
+**Benchmark:** A reliable before/after measurement on the sustained 1.5M-order driver is
+not available for this session because the benchmark environment became unstable
+(laptop memory pressure / unrelated container churn). The implementation is retained
+because it reduces object churn and passes all correctness tests; fresh measurements
+should be made on a quiet environment before the next optimization.
+
+**CPU/allocation result (post-change JFR, indicative only due to environment):**
+- `Event.<init>` and `CommandSerializer.toEvent` no longer appear as top allocation
+  frames in the hot path.
+- `HeapByteBuffer.<init>` and `ByteBuffer.allocate` samples are gone from the event-log
+  path.
+- Remaining top frames are `BinaryCodec.encodePayload` (CPU) and per-trade settlement
+  (`SettlementService.settle`, `InMemoryLedger.post`).
+
+**Correctness result:** PASS.
+- `mvn test` green across all 16 modules.
+- `OrderServiceReplayTest` reconstructs the order book, ledger, and portfolio identically.
+- `EventStoreTest.eventsAreImmutable` still passes.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-protocol/src/main/java/com/finex/protocol/BinaryCodec.java`
+- `finex-event-log/src/main/java/com/finex/eventlog/CommandSerializer.java`
+- `finex-event-log/src/main/java/com/finex/eventlog/Event.java`
+- `finex-event-log/src/main/java/com/finex/eventlog/EventStore.java`
+- `finex-event-log/src/main/java/com/finex/eventlog/InMemoryEventStore.java`
+- `finex-event-log/src/test/java/com/finex/eventlog/EventStoreTest.java`
+- `finex-api/src/main/java/com/finex/api/order/OrderService.java`
+
+**Next hotspot identified:** `SettlementService.settle` / `InMemoryLedger.post`
+(per-trade ledger entries and account-key string allocation), `BinaryCodec.encodePayload`
+(CPU), and `BigDecimal` arithmetic across risk/clearing/settlement/portfolio.
+
+**Status:** COMPLETED / KEPT.

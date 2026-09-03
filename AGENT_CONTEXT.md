@@ -1,12 +1,12 @@
 # AGENT CONTEXT (keep short)
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle, OPT-006 completed). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-006 (reduce per-match collection copies, `BinaryCodec` per-thread
-buffer reuse, and benchmark-driver `BigDecimal` constants) completed, measured, and
-documented. Next candidate: OPT-007 — further event-log/ledger allocation reduction
-(`Event` copy in `InMemoryEventStore.append`, per-trade `LedgerEntry` creation,
-`String` account-key caching).
+cycle, OPT-007 completed). This is ongoing/iterative work, not a numbered master-plan phase.
+**Current task:** OPT-007 (reduce event-log serialization allocation: `BinaryCodec.encodeToBytes`,
+`CommandSerializer.toPayload`, `EventStore.append(Instant, String, byte[])` overload,
+remove `Event` payload clone on the hot path) completed and tests pass. Next candidates:
+OPT-008 (metrics batching), OPT-009 (randomized stress harness), OPT-010 (fixed-point
+numerics), OPT-011 (lock-free order book).
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -49,17 +49,30 @@ documented. Next candidate: OPT-007 — further event-log/ledger allocation redu
   collections), reused a `ThreadLocal<ByteArrayOutputStream>` in `BinaryCodec`, and
   pre-computed `BigDecimal` constants in the sustained driver (shared driver:
   587.7k → 671.1k ops/s, **+14.2%**; matching-engine JMH: 3.37M → 4.23M ops/s).
-- Full `mvn test` green across all 16 modules after OPT-006.
+- OPT-007: added `BinaryCodec.encodeToBytes`, `CommandSerializer.toPayload`, and an
+  `EventStore.append(Instant, String, byte[])` overload; removed the `Event` payload
+  clone from the hot path; `mvn test` green across all 16 modules.
+- Full `mvn test` green across all 16 modules after OPT-006 and OPT-007.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
-**Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
-containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
-The `exec-maven-plugin` `exec:java` goal in `finex-benchmarks` does not reliably honor
-`-Dexec.mainClass` overrides on this machine/plugin version (always runs the
-pom-configured `BenchmarkRunner`); use `java -cp <classpath>` directly to run
-`ProfileRunner` / `SustainedSharedServiceDriver` instead (see `OPTIMIZATION_EVIDENCE.md`
-for the exact reproduction commands).
+**Known problems:**
+- On this machine, local port 5432 can be occupied by unrelated Docker containers from
+  other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
+- The `exec-maven-plugin` `exec:java` goal in `finex-benchmarks` does not reliably honor
+  `-Dexec.mainClass` overrides on this machine/plugin version (always runs the
+  pom-configured `BenchmarkRunner`); use `java -cp <classpath>` directly to run
+  `ProfileRunner` / `SustainedSharedServiceDriver` instead (see `OPTIMIZATION_EVIDENCE.md`
+  for the exact reproduction commands).
+- The sustained-driver benchmark environment became unstable during this session (memory
+  pressure / compressor activity, unrelated Docker/container churn). Measured throughput
+  dropped to ~200–300k ops/sec for both the committed OPT-006 baseline and the new
+  OPT-007 code, so reliable before/after numbers for OPT-007 are not available. Re-run
+  on a quiet, dedicated environment before declaring the OPT-007 speed-up.
+
+**Remaining backlog:** OPT-008 (metrics batching/offloading), OPT-009 (randomized
+financial-invariant stress harness), OPT-010 (fixed-point numerics in hot path),
+OPT-011 (lock-free / single-writer order book per symbol shard).
 
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
 `OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.

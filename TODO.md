@@ -10,12 +10,13 @@
 - [x] OPT-006: reduce per-match collection copies and encode-buffer allocation.
 - [x] Full `mvn test` green after OPT-006.
 
-## Performance-engineering backlog (not yet in master plan)
+## Performance-engineering backlog
 
-- [ ] OPT-007: further event-log/ledger allocation reduction (`Event` copy in
-  `InMemoryEventStore.append`, per-trade `LedgerEntry` creation, `String` account-key
-  caching — top remaining CPU/allocation frames after OPT-006).
-- [ ] Investigate metrics offloading/batching (`MetricsService` is still on the hot path).
-- [ ] Add randomized differential/financial-invariant stress harness.
-- [ ] Investigate fixed-point numerics for the hot path.
-- [ ] Investigate lock-free or single-writer order book per symbol shard.
+- [x] OPT-007: further event-log/ledger allocation reduction (`Event` copy in
+  `InMemoryEventStore.append`, `BinaryCodec` `ByteBuffer` intermediate allocation,
+  `CommandSerializer.toEvent` temporary `Event`). Implemented; measured improvement
+  deferred due to unstable benchmark environment.
+- [ ] OPT-008: Investigate metrics offloading/batching (`MetricsService` is still on the hot path).
+- [ ] OPT-009: Add randomized differential/financial-invariant stress harness.
+- [ ] OPT-010: Investigate fixed-point numerics for the hot path.
+- [ ] OPT-011: Investigate lock-free or single-writer order book per symbol shard.

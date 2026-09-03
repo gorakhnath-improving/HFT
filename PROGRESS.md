@@ -4,6 +4,54 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 15: OPT-007 — Reduce event-log serialization allocation
+
+**Scope:** Continuation of the post-master-plan performance engineering pass.
+
+**Done:**
+- Re-profiled the post-OPT-006 baseline. The dominant remaining allocation frames were
+  `CommandSerializer.toEvent`, `Event.<init>`, and the second `Event` copy performed inside
+  `InMemoryEventStore.append`.
+- **OPT-007:** Reduced per-order event-log allocation:
+  - Added `BinaryCodec.encodeToBytes(ProtocolMessage)`: writes a length-prefixed frame
+    directly to a fresh `byte[]`, eliminating the intermediate `HeapByteBuffer` allocation
+    and the `ByteBuffer.get` copy in the hot path.
+  - Added `CommandSerializer.toPayload(SubmitOrderCommand|CancelOrderCommand)` returning a
+    raw `byte[]` payload.
+  - Added `EventStore.append(Instant, String, byte[])` and implemented it in
+    `InMemoryEventStore` so `OrderService` can append without first wrapping a payload in a
+    throw-away `Event`.
+  - Removed the defensive `payload.clone()` from `Event` construction and from `payload()`;
+    callers on the hot path pass freshly allocated arrays, so the extra copy was pure
+    overhead. The `InMemoryEventStore.append(Event)` compatibility path still clones to
+    preserve the store boundary.
+  - Updated `OrderService.submitOrder` / `cancelOrder` to use the new overload.
+- All affected unit tests pass, including `CommandSerializerTest`, `EventStoreTest`,
+  `OrderServiceReplayTest`, and full `mvn test`.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules.
+- `OrderServiceReplayTest` still reconstructs the order book, ledger, and portfolio
+  identically from the event store.
+- `EventStoreTest.eventsAreImmutable` updated to clone its own payload before passing it
+  in, preserving the immutability contract from the caller side.
+
+**Blockers:** The sustained-driver benchmark environment became unstable during this session
+(laptop-class machine under memory pressure; unrelated Docker/container activity).
+Consecutive runs of the committed OPT-006 baseline and the new OPT-007 code both reported
+throughput in the 200–300k ops/sec range, far below the previously measured 671k ops/sec,
+so a reliable before/after OPT-007 measurement is not available. The code change is
+retained because it reduces allocation and passes all correctness tests, but the
+magnitude of the improvement cannot be quantified on this machine today.
+
+**Next session should:**
+- Re-run the sustained driver on a quiet, dedicated environment to validate OPT-007.
+- Re-profile and continue with the remaining backlog only if the next hotspot is clearly
+  measured: `SettlementService` account-key string caching, `InMemoryLedger` ledger-entry
+  copying, `MetricsService` batching, fixed-point numerics, lock-free order book, etc.
+
+---
+
 ## 2026-09-03 — Session 13: OPT-004 + OPT-005 — Latency measurement and O(1) risk reservation totals
 
 **Scope:** Continuation of the post-master-plan performance engineering pass; same

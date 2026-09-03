@@ -1,8 +1,10 @@
 # Final Benchmark Report
 
 Honest performance assessment against the 1,000,000 orders/sec target. Updated through
-OPT-006; see `OPTIMIZATIONS.md` and `OPTIMIZATION_EVIDENCE.md` for methodology and
-per-optimization raw data.
+OPT-006; OPT-007 code is committed but its before/after sustained-driver numbers are not
+available because the benchmark environment became unstable during that session. See
+`OPTIMIZATIONS.md` and `OPTIMIZATION_EVIDENCE.md` for methodology and per-optimization
+data.
 
 ## Environment
 

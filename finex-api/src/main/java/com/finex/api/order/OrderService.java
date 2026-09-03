@@ -22,6 +22,7 @@ import com.finex.common.domain.enums.Side;
 import com.finex.eventlog.CancelOrderCommand;
 import com.finex.eventlog.CommandHandler;
 import com.finex.eventlog.CommandSerializer;
+import com.finex.eventlog.Event;
 import com.finex.eventlog.EventStore;
 import com.finex.eventlog.InMemoryEventStore;
 import com.finex.eventlog.ReplayEngine;
@@ -124,7 +125,7 @@ public class OrderService implements CommandHandler {
                 request.type(),
                 request.price(),
                 request.quantity());
-        eventStore.append(CommandSerializer.toEvent(command, now, 0L));
+        eventStore.append(now, Event.SUBMIT_ORDER, CommandSerializer.toPayload(command));
 
         long start = System.nanoTime();
         try {
@@ -207,7 +208,7 @@ public class OrderService implements CommandHandler {
             Optional<Order> live = shard.findOrder(orderId);
             if (live.isPresent()) {
                 CancelOrderCommand command = new CancelOrderCommand(live.get().accountId(), orderId);
-                eventStore.append(CommandSerializer.toEvent(command, now, 0L));
+                eventStore.append(now, Event.CANCEL_ORDER, CommandSerializer.toPayload(command));
                 boolean cancelled = doCancel(command, now);
                 if (cancelled) {
                     metricsService.recordCancelled();

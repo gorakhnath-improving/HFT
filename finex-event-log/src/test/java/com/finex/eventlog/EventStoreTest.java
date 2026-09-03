@@ -28,7 +28,7 @@ class EventStoreTest {
         InMemoryEventStore store = new InMemoryEventStore();
         byte[] payload = {1, 2, 3};
 
-        store.append(new Event(0L, NOW, Event.SUBMIT_ORDER, payload));
+        store.append(new Event(0L, NOW, Event.SUBMIT_ORDER, payload.clone()));
         payload[0] = 9;
 
         Event stored = store.readAll().get(0);

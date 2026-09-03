@@ -20,10 +20,13 @@ public record Event(long id, Instant timestamp, String type, byte[] payload) {
         if (payload == null) {
             throw new IllegalArgumentException("payload must not be null");
         }
-        payload = payload.clone();
+        // Performance: we do NOT clone the payload. Callers must not mutate the array after
+        // construction. The hot path always passes a freshly allocated byte[].
     }
 
     public byte[] payload() {
-        return payload.clone();
+        // Performance: we do NOT clone the payload. Callers must not mutate the returned array.
+        // The hot path always passes a freshly allocated byte[].
+        return payload;
     }
 }

@@ -68,6 +68,37 @@ public final class BinaryCodec {
     }
 
     /**
+     * Encodes a message to a fresh {@code byte[]} with a 4-byte length prefix.
+     * This avoids the intermediate {@link ByteBuffer} allocation and copy done by
+     * {@link #encode(ProtocolMessage)} and is intended for the hot event-log path.
+     */
+    public static byte[] encodeToBytes(ProtocolMessage message) {
+        if (message == null) {
+            throw new IllegalArgumentException("message must not be null");
+        }
+        ByteArrayOutputStream baos = ENCODE_BAOS.get();
+        baos.reset();
+        DataOutputStream out = new DataOutputStream(baos);
+        try {
+            // Reserve 4 bytes for the length prefix; patched once the payload size is known.
+            out.writeInt(0);
+            out.writeByte(typeOf(message));
+            encodePayload(out, message);
+            out.flush();
+
+            byte[] frame = baos.toByteArray();
+            int payloadLength = frame.length - 4;
+            frame[0] = (byte) (payloadLength >>> 24);
+            frame[1] = (byte) (payloadLength >>> 16);
+            frame[2] = (byte) (payloadLength >>> 8);
+            frame[3] = (byte) payloadLength;
+            return frame;
+        } catch (IOException e) {
+            throw new ProtocolEncodeException("failed to encode message: " + message, e);
+        }
+    }
+
+    /**
      * Decodes a length-prefixed frame from the buffer. The buffer must contain exactly one
      * complete frame; partial reads are not supported by this baseline codec.
      */

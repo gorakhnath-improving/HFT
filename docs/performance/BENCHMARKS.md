@@ -49,10 +49,17 @@ symbol `BTC-USD`, single shared `OrderService`, 750,000 resulting trades in ever
 | After OPT-003 | 137,562.51 | +77.8% |
 | After OPT-005 | 587,705.20 | +659.8% |
 | After OPT-006 | 671,089.23 | +767.0% |
+| After OPT-007 | *deferred* | *deferred* |
 
 This is the most rigorous end-to-end throughput measurement for the shared `OrderService`
 path; the JMH numbers above are shorter and more variable. This driver reports per-order
 latency percentiles; see `OPTIMIZATION_EVIDENCE.md` for the raw numbers.
+
+**Note:** The sustained driver became unreliable on the development machine during the
+OPT-007 session (memory pressure / unrelated Docker/container churn), producing ~200–300k
+ops/sec for both the committed OPT-006 baseline and the new OPT-007 code. A reliable
+OPT-007 before/after measurement therefore has not been recorded; re-run on a quiet
+environment before continuing the optimization pass.
 
 ### Latest latency percentiles (post OPT-006)
 

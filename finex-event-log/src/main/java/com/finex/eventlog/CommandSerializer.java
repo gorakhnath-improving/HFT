@@ -40,6 +40,24 @@ public final class CommandSerializer {
         return new Event(id, timestamp, Event.CANCEL_ORDER, payload);
     }
 
+    public static byte[] toPayload(SubmitOrderCommand command) {
+        ProtocolMessage.NewOrder message = new ProtocolMessage.NewOrder(
+                command.accountId(),
+                command.clientOrderId(),
+                command.symbol(),
+                command.side(),
+                command.type(),
+                command.price(),
+                command.quantity());
+        return BinaryCodec.encodeToBytes(message);
+    }
+
+    public static byte[] toPayload(CancelOrderCommand command) {
+        ProtocolMessage.CancelOrder message = new ProtocolMessage.CancelOrder(
+                command.accountId(), command.orderId());
+        return BinaryCodec.encodeToBytes(message);
+    }
+
     public static SubmitOrderCommand toSubmitOrderCommand(Event event) {
         if (!Event.SUBMIT_ORDER.equals(event.type())) {
             throw new IllegalArgumentException("event type must be " + Event.SUBMIT_ORDER);

@@ -65,8 +65,9 @@ The optimization pass stops when one of the following is true:
 
 **Update after OPT-006:** The shared `OrderService` driver has reached **671.1k
 invocations/sec (≈ 13.4M orders/sec)** with p99 ≈ 5.2 µs. This exceeds the original
-1M ops/sec conceptual target by more than 13x. The remaining items below are about
-production-grade hardening and architecture, not about hitting the original number.
+1M ops/sec conceptual target by more than 13x. OPT-007 (event-log allocation reduction)
+was implemented with tests passing, but the sustained driver became unreliable on this
+machine during the session, so no verified OPT-007 throughput numbers are available.
 
 ## Status
 
@@ -77,5 +78,7 @@ production-grade hardening and architecture, not about hitting the original numb
 - OPT-005: COMPLETED — O(1) `AccountRiskState` reservation totals
 - OPT-006: COMPLETED — per-match collection pre-sizing, `BinaryCodec` per-thread buffer reuse,
   and `SustainedSharedServiceDriver` `BigDecimal` constants
-- OPT-007: NOT STARTED — further event-log/ledger allocation reduction (`Event` copy in
-  `InMemoryEventStore`, per-trade `LedgerEntry` creation, `String` account-key caching)
+- OPT-007: COMPLETED — reduced event-log allocation by removing the `Event` payload clone,
+  adding a raw-payload `EventStore.append` overload, and introducing
+  `BinaryCodec.encodeToBytes`. `String` account-key caching and per-trade `LedgerEntry`
+  churn remain future work; benchmark environment became too noisy to measure this step.
