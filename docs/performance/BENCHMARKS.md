@@ -111,6 +111,14 @@ Median latency p50 875→875 ns, p90 1,750→1,605, p99 4,792→4,604, p99.9 21,
 p99.99 44,730→42,792, max 74.3→70.8 ms. JFR: Long allocation pressure 24.84%→11.26%,
 ConcurrentHashMap node 9.77%→7.18%, young GC 18→16, total pauses 982→747 ms.
 
+**OPT-013 controlled A/B:** Consolidating three primitive reservation maps into one parallel-value
+table, five valid isolated interleaved 1.5M-order pairs: OPT-012 baseline 829,499 mean / 841,662
+median; candidate 945,413 mean / 946,580 median. Mean delta **+13.97%**, median +12.47%.
+Median p50 875→791 ns, p90 1,375→1,083, p99 4,125→3,917, p99.9 16,917→12,250,
+p99.99 43,167→41,375; max regressed 71.2→75.4 ms. JFR Long pressure 11.26%→2.39%,
+map-put CPU 16.33%→5.42%, young GC 16→12; total/max GC pause regressed 747→779 ms and
+127→224 ms.
+
 ### Latest latency percentiles (post OPT-006)
 
 | p50 | p90 | p99 | p99.9 | p99.99 | max |

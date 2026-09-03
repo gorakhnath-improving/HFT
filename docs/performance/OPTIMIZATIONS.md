@@ -836,3 +836,26 @@ showing map work remains but boxed/node allocation was reduced. No contention ev
 
 **Decision/status:** **VALIDATED IMPROVEMENT / KEPT.** Scope is owner-serialized fixed-point risk
 state only; this does not justify replacing service-level concurrent maps.
+
+---
+
+## OPT-013 — Consolidated primitive reservation table
+
+**Evidence/change:** OPT-012 left `LongLongHashMap.put` as the top CPU frame (16.33%). The three
+reservation tables shared one order-ID lifecycle, so cash, position, and price were consolidated
+into parallel arrays under one key table, reducing repeated hashing/probing.
+
+**Correctness:** Full 16-module tests and all seven 100k-command differential/replay/invariant
+profiles pass.
+
+**Controlled A/B:** Five valid isolated interleaved 1.5M-order pairs against OPT-012: baseline
+829,499 mean / 841,662 median / 55,818 stdev; candidate 945,413 mean / 946,580 median / 46,491
+stdev. Mean delta **+13.97%**, median +12.47%; 4/5 pairs positive. Median p50–p99.99 improved;
+maximum latency regressed 71.2→75.4 ms.
+
+**JFR:** Long pressure 11.26%→2.39%, CHM-node 7.18%→0.53%, long-array 4.43%→2.94%, young GC
+16→12, and map-put CPU 16.33%→5.42%. Total GC pause regressed 747→779 ms and maximum GC pause
+127→224 ms; extreme pauses remain JVM/system dominated and did not improve.
+
+**Decision/status:** **VALIDATED IMPROVEMENT / KEPT**, with the extreme-pause regression retained
+as an explicit tradeoff. See `EXPERIMENTS.md` for methodology and discarded invalid setup run.

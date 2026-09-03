@@ -120,3 +120,37 @@ put/transfer cost rather than eliminating map work. No monitor-enter or thread-p
 
 **Decision:** **VALIDATED / KEPT.** Improvement is specific to the owner-serialized fixed-point
 risk state and tested workload; it is not evidence to replace service-level concurrent maps.
+
+## OPT-013 — Consolidated primitive reservation table
+
+**Problem/evidence:** After OPT-012, `LongLongHashMap.put` was the largest CPU frame at 16.33%.
+`FixedPointAccountRiskState` maintained three primitive tables keyed by the same order ID, causing
+three hashes/probes on reserve/release and repeated probes during trade updates.
+
+**Hypothesis/change:** Store reserved cash, reserved position, and reservation price in parallel
+value arrays under one key table. Load/update the complete reservation through one table lifecycle.
+
+**Correctness:** Extended map tests cover parallel-value replacement/load/remove. Full 16-module
+`mvn test` and all seven 100k-command exact differential, both replay, and both invariant suites
+pass. One initial benchmark attempt lacked a built baseline worktree; its candidate-only readings
+were discarded before the valid A/B.
+
+**Controlled A/B:** Five valid isolated interleaved 1.5M-order pairs against OPT-012:
+
+| Variant | Mean ops/s | Median ops/s | Stdev |
+|---|---:|---:|---:|
+| OPT-012 | 829,499 | 841,662 | 55,818 |
+| Consolidated table | 945,413 | 946,580 | 46,491 |
+
+Mean delta **+13.97%**, median +12.47%; 4/5 pairs favored candidate. Median latency:
+p50 875→791 ns, p90 1,375→1,083, p99 4,125→3,917, p99.9 16,917→12,250,
+p99.99 43,167→41,375 ns. Maximum latency regressed 71.2→75.4 ms.
+
+**JFR:** Profiled throughput 780,946→888,537 ops/s. Long allocation pressure 11.26%→2.39%,
+ConcurrentHashMap node 7.18%→0.53%, long-array pressure 4.43%→2.94%, and young GC 16→12.
+Total GC pause regressed 747→779 ms and maximum GC pause 127→224 ms, so extreme pause behavior
+did not improve. Consolidated `LongLongHashMap.put` fell from 16.33% to 5.42% of CPU samples.
+
+**Decision:** **VALIDATED / KEPT**, with the maximum-latency and GC-pause regression explicitly
+recorded. The strong throughput, normal-tail latency, and allocation improvements justify keeping
+the change for this tested owner-serialized workload; it is not a claim about service maps.

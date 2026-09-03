@@ -4,6 +4,24 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 21: OPT-013 — Consolidated reservation table
+
+**Change:** Consolidated cash, position, and price reservation values into parallel arrays under
+one primitive order-ID table, replacing three repeated map lifecycles.
+
+**Correctness:** Full 16-module tests and all seven 100k-command differential/replay/invariant
+profiles pass. An invalid candidate-only benchmark setup was discarded before controlled A/B.
+
+**Performance:** Five valid pairs measured 829,499→945,413 mean ops/s (+13.97%) and
+841,662→946,580 median (+12.47%). Median p50–p99.99 improved; max regressed 71.2→75.4 ms.
+JFR Long pressure 11.26%→2.39%, map-put CPU 16.33%→5.42%, young GC 16→12; total/max GC
+pause regressed 747→779 ms and 127→224 ms.
+
+**Verdict:** VALIDATED IMPROVEMENT / KEPT with explicit extreme-pause tradeoff. Next candidate
+is protocol/event byte-array allocation; not started.
+
+---
+
 ## 2026-09-03 — Session 20: OPT-012 — Primitive fixed-point reservation maps
 
 **Change:** Replaced three boxed concurrent reservation maps inside owner-serialized

@@ -2,12 +2,12 @@
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
 cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-012 is **VALIDATED IMPROVEMENT / KEPT**. Three boxed reservation maps
-inside owner-serialized `FixedPointAccountRiskState` now use a primitive `LongLongHashMap`.
-Ten isolated interleaved pairs measured +5.09% mean throughput (+4.41% median); JFR Long
-allocation pressure fell 24.84%→11.26%, ConcurrentHashMap-node pressure 9.77%→7.18%, and GC
-pause 982→747 ms. Full tests and all seven 100k differential/replay/invariant profiles pass.
-OPT-011 remains rejected/reverted. Next candidate is not started.
+**Current task:** OPT-013 is **VALIDATED IMPROVEMENT / KEPT**. Fixed-point cash, position,
+and price reservations now share one primitive key table with parallel values. Five valid isolated
+pairs measured +13.97% mean throughput (+12.47% median); median p50–p99.99 improved while max
+latency and JFR GC pause regressed and are documented. Long allocation pressure fell 11.26%→2.39%
+and map-put CPU 16.33%→5.42%. Full tests and all seven 100k differential/replay/invariant profiles
+pass. Next candidate is protocol/event byte-array allocation; not started.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -68,6 +68,8 @@ OPT-011 remains rejected/reverted. Next candidate is not started.
   benchmark noise; local profile improvement did not produce measurable end-to-end benefit.
 - OPT-012: primitive fixed-point reservation maps validated at +5.09% mean throughput; boxed
   Long and ConcurrentHashMap-node allocation pressure reduced with all correctness gates green.
+- OPT-013: consolidated reservation values under one primitive key table; +13.97% mean throughput,
+  normal-tail latency/allocation improved, extreme/GC pauses regressed and documented.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -90,8 +92,8 @@ OPT-011 remains rejected/reverted. Next candidate is not started.
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
 **Remaining backlog:** OPT-008 remains deprioritized because metrics are absent from hot
-profiles. Next candidate is to compare primitive-map probing/layout against protocol/event
-byte-array allocation using a fresh profile; not started.
+profiles. Next candidate is protocol/event encoding and byte-array allocation while preserving
+byte-identical event compatibility; not started.
 
 **New commands (OPT-009 stress harness):**
 ```bash

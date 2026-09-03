@@ -184,3 +184,13 @@ pressure 24.84%→11.26%, ConcurrentHashMap-node pressure 9.77%→7.18%, and GC 
 Next candidate, not started: optimize primitive-map probing/layout only if a fresh profile and
 microbenchmark demonstrate value; otherwise protocol/event byte-array allocation is the next
 system-level measured source. Do not replace service-level concurrent maps based on OPT-012.
+
+## OPT-013 — VALIDATED IMPROVEMENT
+
+Consolidated three same-key primitive reservation maps into one key table with parallel values.
+Five isolated interleaved pairs measured +13.97% mean throughput and +12.47% median. Median
+p50–p99.99 improved; maximum latency and JFR GC pauses regressed. Allocation pressure and map CPU
+fell strongly, all correctness gates pass, and the tradeoff is documented in `EXPERIMENTS.md`.
+
+Next candidate, not started: protocol/event encoding and byte-array allocation now outrank risk-map
+work in the post-OPT-013 profile. Any change must preserve byte-identical event compatibility.

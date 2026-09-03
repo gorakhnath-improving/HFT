@@ -36,5 +36,8 @@
 - [x] OPT-012: Primitive long-to-long reservation maps inside owner-serialized fixed-point risk
   state. Ten-pair A/B: +5.09% mean throughput; Long allocation pressure 24.84%→11.26%; full
   differential/replay/invariant gates pass. **VALIDATED IMPROVEMENT / KEPT.**
-- [ ] Next candidate: profile primitive-map probing/layout versus protocol/event byte-array
-  allocation and select only with fresh evidence. Not started.
+- [x] OPT-013: Consolidate three same-key primitive reservation maps into one parallel-value
+  table. Five-pair A/B: +13.97% mean throughput; median p50–p99.99 improved, max/GC pause
+  regressed and documented. **VALIDATED IMPROVEMENT / KEPT.**
+- [ ] Next candidate: protocol/event encoding and byte-array allocation, preserving byte-identical
+  event compatibility. Not started.
