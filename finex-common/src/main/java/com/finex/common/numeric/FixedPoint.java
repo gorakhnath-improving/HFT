@@ -14,10 +14,54 @@ public record FixedPoint(long raw) implements Comparable<FixedPoint> {
     public static final FixedPoint MAX_VALUE = new FixedPoint(Long.MAX_VALUE);
 
     public static FixedPoint from(BigDecimal value) {
+        return fromRaw(toRawExact(value));
+    }
+
+    public static long toRawExact(BigDecimal value) {
         if (value == null) {
             throw new IllegalArgumentException("value must not be null");
         }
-        return fromRaw(value.setScale(SCALE, RoundingMode.UNNECESSARY).unscaledValue().longValueExact());
+        return value.setScale(SCALE, RoundingMode.UNNECESSARY).unscaledValue().longValueExact();
+    }
+
+    public static BigDecimal toBigDecimal(long raw) {
+        return BigDecimal.valueOf(raw, SCALE);
+    }
+
+    public static long addRaw(long left, long right) {
+        return Math.addExact(left, right);
+    }
+
+    public static long subtractRaw(long left, long right) {
+        return Math.subtractExact(left, right);
+    }
+
+    public static long multiplyRaw(long left, long right) {
+        return scaleProduct(left, right);
+    }
+
+    public static long multiplyExactRaw(long left, long right) {
+        try {
+            long product = Math.multiplyExact(left, right);
+            if (product % FACTOR != 0) {
+                throw new ArithmeticException("product exceeds fixed-point precision");
+            }
+            return product / FACTOR;
+        } catch (ArithmeticException overflow) {
+            BigInteger[] result = BigInteger.valueOf(left).multiply(BigInteger.valueOf(right))
+                    .divideAndRemainder(BigInteger.valueOf(FACTOR));
+            if (result[1].signum() != 0) {
+                throw new ArithmeticException("product exceeds fixed-point precision");
+            }
+            return result[0].longValueExact();
+        }
+    }
+
+    public static long divideRaw(long dividend, long divisor) {
+        if (divisor == 0) {
+            throw new ArithmeticException("division by zero");
+        }
+        return scaleQuotient(dividend, divisor);
     }
 
     public static FixedPoint fromRaw(long raw) {
@@ -60,7 +104,7 @@ public record FixedPoint(long raw) implements Comparable<FixedPoint> {
     }
 
     public BigDecimal toBigDecimal() {
-        return BigDecimal.valueOf(raw, SCALE);
+        return toBigDecimal(raw);
     }
 
     public void writeTo(ByteBuffer buffer) {

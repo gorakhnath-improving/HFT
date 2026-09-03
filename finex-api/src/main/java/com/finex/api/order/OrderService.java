@@ -14,11 +14,13 @@ import org.springframework.stereotype.Service;
 
 import com.finex.api.metrics.MetricsService;
 import com.finex.clearing.ClearingService;
+import com.finex.clearing.FixedPointClearingService;
 import com.finex.common.domain.Order;
 import com.finex.common.domain.Trade;
 import com.finex.common.domain.enums.OrderStatus;
 import com.finex.common.domain.enums.OrderType;
 import com.finex.common.domain.enums.Side;
+import com.finex.common.numeric.FixedPoint;
 import com.finex.eventlog.CancelOrderCommand;
 import com.finex.eventlog.CommandHandler;
 import com.finex.eventlog.CommandSerializer;
@@ -41,6 +43,8 @@ import com.finex.orderbook.OrderBook;
 import com.finex.portfolio.Portfolio;
 import com.finex.portfolio.PortfolioService;
 import com.finex.risk.AccountRiskState;
+import com.finex.risk.FixedPointAccountRiskState;
+import com.finex.risk.FixedPointRiskEngine;
 import com.finex.risk.RiskConfig;
 import com.finex.risk.RiskEngine;
 import com.finex.risk.RiskResult;
@@ -82,32 +86,59 @@ public class OrderService implements CommandHandler {
     private final Map<Long, Order> orderCache = new ConcurrentHashMap<>();
     private final AtomicLong orderSequence = new AtomicLong(0);
 
-    private final RiskEngine riskEngine = new RiskEngine(RiskConfig.defaults());
+    private final NumericMode numericMode;
+    private final RiskEngine riskEngine;
+    private final FixedPointRiskEngine fixedPointRiskEngine;
     private final Map<Long, AccountRiskState> riskStates = new ConcurrentHashMap<>();
+    private final Map<Long, FixedPointAccountRiskState> fixedPointRiskStates = new ConcurrentHashMap<>();
     private final Map<String, BigDecimal> lastTradePrices = new ConcurrentHashMap<>();
 
     private final MarketDataPublisher publisher = new SimpleMarketDataPublisher();
     private final EventStore eventStore;
     private final Ledger ledger = new InMemoryLedger();
     private final PortfolioService portfolioService = new PortfolioService();
-    private final ClearingService clearingService = new ClearingService();
-    private final SettlementService settlementService = new SettlementService(clearingService, ledger, portfolioService);
+    private final ClearingService clearingService;
+    private final SettlementService settlementService;
     private MetricsService metricsService = new MetricsService();
 
+    public enum NumericMode {
+        BIG_DECIMAL,
+        FIXED_POINT
+    }
+
     public OrderService() {
-        this(new InMemoryEventStore(), 1);
+        this(new InMemoryEventStore(), 1, NumericMode.BIG_DECIMAL);
     }
 
     public OrderService(EventStore eventStore) {
-        this(eventStore, 1);
+        this(eventStore, 1, NumericMode.BIG_DECIMAL);
     }
 
     public OrderService(EventStore eventStore, int shardCount) {
+        this(eventStore, shardCount, NumericMode.BIG_DECIMAL);
+    }
+
+    public OrderService(NumericMode numericMode) {
+        this(new InMemoryEventStore(), 1, numericMode);
+    }
+
+    public OrderService(EventStore eventStore, int shardCount, NumericMode numericMode) {
         if (eventStore == null) {
             throw new IllegalArgumentException("eventStore must not be null");
         }
+        if (numericMode == null) {
+            throw new IllegalArgumentException("numericMode must not be null");
+        }
         this.eventStore = eventStore;
         this.coordinator = new ShardCoordinator(shardCount);
+        this.numericMode = numericMode;
+        RiskConfig riskConfig = RiskConfig.defaults();
+        this.riskEngine = numericMode == NumericMode.BIG_DECIMAL ? new RiskEngine(riskConfig) : null;
+        this.fixedPointRiskEngine = numericMode == NumericMode.FIXED_POINT ? new FixedPointRiskEngine(riskConfig) : null;
+        this.clearingService = numericMode == NumericMode.FIXED_POINT
+                ? new FixedPointClearingService()
+                : new ClearingService();
+        this.settlementService = new SettlementService(clearingService, ledger, portfolioService);
     }
 
     @Autowired(required = false)
@@ -117,6 +148,9 @@ public class OrderService implements CommandHandler {
 
     public MatchResult submitOrder(OrderRequest request, Instant now) {
         validateRequest(request);
+        if (numericMode == NumericMode.FIXED_POINT) {
+            validateFixedPointRequest(request);
+        }
         SubmitOrderCommand command = new SubmitOrderCommand(
                 request.accountId(),
                 request.clientOrderId() == null ? ("cid-" + (orderSequence.get() + 1)) : request.clientOrderId(),
@@ -175,8 +209,7 @@ public class OrderService implements CommandHandler {
                 now,
                 OrderStatus.OPEN);
 
-        AccountRiskState state = riskState(command.accountId());
-        RiskResult riskResult = riskEngine.validate(order, state, now, lastTradePrices.get(command.symbol()));
+        RiskResult riskResult = validateRisk(order, now, lastTradePrices.get(command.symbol()));
         if (!riskResult.accepted()) {
             Order rejected = order.rejected(now);
             orderCache.put(orderId, rejected);
@@ -246,10 +279,7 @@ public class OrderService implements CommandHandler {
                 if (cancelled) {
                     Order cancelledOrder = live.get().cancelled(now);
                     orderCache.put(command.orderId(), cancelledOrder);
-                    AccountRiskState state = riskStates.get(cancelledOrder.accountId());
-                    if (state != null) {
-                        riskEngine.onCancel(state, command.orderId());
-                    }
+                    releaseRiskReservation(cancelledOrder.accountId(), command.orderId());
                     publishBookUpdate(cancelledOrder.symbol(), shard, now);
                 }
                 return cancelled;
@@ -311,11 +341,42 @@ public class OrderService implements CommandHandler {
                 new AccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION, riskEngine.config()));
     }
 
+    private FixedPointAccountRiskState fixedPointRiskState(long accountId) {
+        return fixedPointRiskStates.computeIfAbsent(accountId, id ->
+                new FixedPointAccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION));
+    }
+
+    private RiskResult validateRisk(Order order, Instant now, BigDecimal lastTradePrice) {
+        if (numericMode == NumericMode.FIXED_POINT) {
+            return fixedPointRiskEngine.validate(order, fixedPointRiskState(order.accountId()), now, lastTradePrice);
+        }
+        return riskEngine.validate(order, riskState(order.accountId()), now, lastTradePrice);
+    }
+
+    private void releaseRiskReservation(long accountId, long orderId) {
+        if (numericMode == NumericMode.FIXED_POINT) {
+            FixedPointAccountRiskState state = fixedPointRiskStates.get(accountId);
+            if (state != null) {
+                fixedPointRiskEngine.onCancel(state, orderId);
+            }
+        } else {
+            AccountRiskState state = riskStates.get(accountId);
+            if (state != null) {
+                riskEngine.onCancel(state, orderId);
+            }
+        }
+    }
+
     private void applyTradeToRiskState(Trade trade) {
-        AccountRiskState buyer = riskState(trade.buyerAccountId());
-        AccountRiskState seller = riskState(trade.sellerAccountId());
-        riskEngine.onTrade(buyer, trade.buyOrderId(), trade, Side.BUY);
-        riskEngine.onTrade(seller, trade.sellOrderId(), trade, Side.SELL);
+        if (numericMode == NumericMode.FIXED_POINT) {
+            fixedPointRiskEngine.onTrade(fixedPointRiskState(trade.buyerAccountId()),
+                    trade.buyOrderId(), trade, Side.BUY);
+            fixedPointRiskEngine.onTrade(fixedPointRiskState(trade.sellerAccountId()),
+                    trade.sellOrderId(), trade, Side.SELL);
+        } else {
+            riskEngine.onTrade(riskState(trade.buyerAccountId()), trade.buyOrderId(), trade, Side.BUY);
+            riskEngine.onTrade(riskState(trade.sellerAccountId()), trade.sellOrderId(), trade, Side.SELL);
+        }
     }
 
     private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {
@@ -364,6 +425,13 @@ public class OrderService implements CommandHandler {
             BookUpdate update = BookUpdateFactory.from(symbol, book, now);
             publisher.publish(update);
         });
+    }
+
+    private static void validateFixedPointRequest(OrderRequest request) {
+        FixedPoint.toRawExact(request.quantity());
+        if (request.price() != null) {
+            FixedPoint.toRawExact(request.price());
+        }
     }
 
     private static void validateRequest(OrderRequest request) {
