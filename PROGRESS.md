@@ -4,6 +4,41 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 9: Phases 17-22 — Benchmarks, Profiling, Optimization, Observability, Failure Testing, Security
+
+**Phase:** 17 → 22 (done)
+
+**Done:**
+- Updated `TODO.md`, `AGENT_CONTEXT.md`, and `PROGRESS.md`.
+- **Phase 17 — Performance Benchmarks:** Added `finex-benchmarks` module with JMH and
+  benchmarks for `OrderBook`, `MatchingEngine`, `OrderService`, and end-to-end `LoadGenerator`.
+  Recorded baseline numbers in `docs/performance/BENCHMARKS.md`.
+- **Phase 18 — Profiling:** Added `ProfileRunner` that captures a JFR recording around a
+  `LoadGenerator` run and `docs/performance/PROFILING.md`.
+- **Phase 19 — Optimization:** Implemented in-place `OrderBook.replaceOrder` and updated
+  `MatchingEngine` to avoid TreeMap remove/re-insert on partially filled orders. Documented
+  before/after numbers and analysis in `docs/performance/OPTIMIZATIONS.md`.
+- **Phase 20 — Observability:** Added `MetricsService` with Micrometer counters/timer,
+  wired `OrderService` to record submitted/rejected/cancelled orders, trades, and latency.
+  Added Grafana dashboard JSON and provisioning under `docker/grafana/`.
+- **Phase 21 — Failure Testing:** Added `OrderServiceFailureTest` and `EventStoreFailureTest`
+  covering invalid input, risk rejections, order lifecycle failures, and corrupt event replay.
+  Added `docs/testing/FAILURE_TESTING.md`.
+- **Phase 22 — Security:** Added `ApiKey`, `ApiKeyService`, and `ApiKeyAuthenticationFilter`
+  using the `X-API-Key` header. Enforced account isolation in `OrderController` (submit
+  accountId match, get/cancel restricted to owner). Added `docs/security/API_KEYS.md`.
+
+**Verified:**
+- `mvn -q -DskipTests package` — SUCCESS.
+- `mvn test` — SUCCESS across all modules.
+
+**Blockers:** None.
+
+**Next session should:**
+- Phase 23 — Documentation review / consolidation, or Phase 24 — final benchmark campaign.
+
+---
+
 ## 2026-09-02 — Session 8: Phases 12-16 — Portfolio, Clearing, Settlement, Replay, Load Generator
 
 **Phase:** 11 → 12 → 13 → 14 → 15 → 16 (done)

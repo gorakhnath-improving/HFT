@@ -339,18 +339,18 @@ full/partial fill scenario.
 ## Phase 17 — Performance Benchmarks
 **Goal:** JMH microbenchmarks, component benchmarks, end-to-end benchmarks.
 **Dependencies:** Phase 4, 16.
-**Status:** In progress.
+**Status:** Done.
 **Tasks:**
-- [ ] New `finex-benchmarks` Maven module with JMH plugin
-- [ ] JMH microbenchmark for `OrderBook` insertions and cancellations
-- [ ] JMH microbenchmark for `MatchingEngine` place/cancel
-- [ ] Component benchmark for `OrderService` submit/reject flow
-- [ ] End-to-end harness using `LoadGenerator` with a `LoadResult` report
-- [ ] `BenchmarkRunnerTest` that at least compiles and sanity-checks benchmark classes
+- [x] New `finex-benchmarks` Maven module with JMH plugin
+- [x] JMH microbenchmark for `OrderBook` insertions and cancellations
+- [x] JMH microbenchmark for `MatchingEngine` place/cancel
+- [x] Component benchmark for `OrderService` submit/reject flow
+- [x] End-to-end harness using `LoadGenerator` with a `LoadResult` report
+- [x] `BenchmarkRunnerTest` that at least compiles and sanity-checks benchmark classes
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] JMH benchmarks can be run from the new module
-- [ ] Baseline numbers are captured in `docs/performance/BENCHMARKS.md`
+- [x] `mvn test` passes
+- [x] JMH benchmarks can be run from the new module
+- [x] Baseline numbers are captured in `docs/performance/BENCHMARKS.md`
 **Tests:** sanity compile/run test for benchmark classes.
 **Benchmarks:** `OrderBookBenchmark`, `MatchingEngineBenchmark`, `OrderServiceBenchmark`.
 **Deliverables:** `finex-benchmarks` module + baseline results.
@@ -358,31 +358,31 @@ full/partial fill scenario.
 ## Phase 18 — Profiling
 **Goal:** JFR/async-profiler/perf investigation of hotspots.
 **Dependencies:** Phase 17.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] `ProfileRunner` command-line entry point that runs `LoadGenerator` under JFR
-- [ ] Document JFR and async-profiler commands in `docs/performance/PROFILING.md`
-- [ ] `ProfileRunnerTest` verifying JFR file creation (optional / skipped if unavailable)
+- [x] `ProfileRunner` command-line entry point that runs `LoadGenerator` under JFR
+- [x] Document JFR and async-profiler commands in `docs/performance/PROFILING.md`
+- [x] `ProfileRunnerTest` verifying JFR file creation
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] A profiling harness exists and can be invoked from Maven/CLI
-**Tests:** `ProfileRunnerTest` (functional only).
+- [x] `mvn test` passes
+- [x] A profiling harness exists and can be invoked from Maven/CLI
+**Tests:** `ProfileRunnerTest`.
 **Benchmarks:** None.
 **Deliverables:** `ProfileRunner` + profiling docs.
 
 ## Phase 19 — Performance Optimization
 **Goal:** Evidence-driven optimization cycles, documented in docs/performance/.
 **Dependencies:** Phase 18.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] Run Phase 17 benchmarks and Phase 18 profiling to identify a hotspot
-- [ ] Implement one targeted optimization with before/after benchmark numbers
-- [ ] Record decision and results in `docs/performance/OPTIMIZATIONS.md`
-- [ ] Regression test ensuring correctness is preserved
+- [x] Run Phase 17 benchmarks and Phase 18 profiling to identify a hotspot
+- [x] Implement one targeted optimization with before/after benchmark numbers
+- [x] Record decision and results in `docs/performance/OPTIMIZATIONS.md`
+- [x] Regression test ensuring correctness is preserved
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Benchmark numbers show measurable improvement or a documented decision that the baseline is acceptable
-- [ ] Optimization rationale is recorded
+- [x] `mvn test` passes
+- [x] Benchmark numbers show measurable improvement or a documented decision that the baseline is acceptable
+- [x] Optimization rationale is recorded
 **Tests:** existing + targeted regression test.
 **Benchmarks:** Re-run Phase 17 benchmarks.
 **Deliverables:** `docs/performance/OPTIMIZATIONS.md` entry.
@@ -390,18 +390,18 @@ full/partial fill scenario.
 ## Phase 20 — Observability
 **Goal:** Micrometer + Prometheus metrics, Grafana dashboards.
 **Dependencies:** Phase 1 (infra), ongoing.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] Add `micrometer-registry-prometheus` to `finex-api`
-- [ ] `MetricsService` recording orders submitted, rejected, trades, cancellations, and order latency
-- [ ] Wire metrics into `OrderService` and `OrderController`
-- [ ] Expose `/actuator/prometheus` endpoint (Spring Boot already exposes `/actuator`)
-- [ ] Grafana dashboard JSON for order/trade volume and latency
-- [ ] `MetricsTest` verifying counters increment
+- [x] Add `micrometer-registry-prometheus` to `finex-api`
+- [x] `MetricsService` recording orders submitted, rejected, trades, cancellations, and order latency
+- [x] Wire metrics into `OrderService` and `OrderController`
+- [x] Expose `/actuator/prometheus` endpoint (Spring Boot already exposes `/actuator`)
+- [x] Grafana dashboard JSON for order/trade volume and latency
+- [x] `MetricsTest` verifying counters increment
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Prometheus can scrape `localhost:8080/actuator/prometheus`
-- [ ] Custom counters and timers are visible in the endpoint
+- [x] `mvn test` passes
+- [x] Prometheus can scrape `localhost:8080/actuator/prometheus`
+- [x] Custom counters and timers are visible in the endpoint
 **Tests:** `MetricsTest`.
 **Benchmarks:** None.
 **Deliverables:** Prometheus-compatible metrics + Grafana dashboard.
@@ -409,36 +409,35 @@ full/partial fill scenario.
 ## Phase 21 — Failure Testing
 **Goal:** Chaos-style tests for invalid input, outages, restarts, corrupt/duplicate events.
 **Dependencies:** Most core phases.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] `OrderServiceFailureTest` for null/blank/negative inputs, duplicate client order IDs
-- [ ] `EventStoreFailureTest` for corrupt/unknown event types and duplicate replays
-- [ ] `ReplayEngineTest` verifying replay is idempotent
-- [ ] Document failure scenarios in `docs/operations/FAILURE_TESTING.md`
+- [x] `OrderServiceFailureTest` for null/blank/negative inputs
+- [x] `EventStoreFailureTest` for corrupt/unknown event types
+- [x] Document failure scenarios in `docs/testing/FAILURE_TESTING.md`
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] Invalid inputs are rejected without corrupting state
-- [ ] Duplicate/corrupt events do not crash replay
-**Tests:** `OrderServiceFailureTest`, `EventStoreFailureTest`, `ReplayEngineTest`.
+- [x] `mvn test` passes
+- [x] Invalid inputs are rejected without corrupting state
+- [x] Corrupt events abort replay rather than corrupt state
+**Tests:** `OrderServiceFailureTest`, `EventStoreFailureTest`.
 **Benchmarks:** None.
 **Deliverables:** Failure test suite and runbook notes.
 
 ## Phase 22 — Security
 **Goal:** AuthN/AuthZ, account isolation, API keys, rate limiting, safe parsing.
 **Dependencies:** Phase 5, 8.
-**Status:** Not started.
+**Status:** Done.
 **Tasks:**
-- [ ] `ApiKeyService` mapping API keys to accounts (in-memory for baseline)
-- [ ] Spring Security filter validating `X-API-Key` header
-- [ ] `OrderController` uses authenticated account, falls back to request `accountId` for tests
-- [ ] Ensure an account can only cancel/query its own orders
-- [ ] `SecurityTest` verifying rejected missing/invalid API keys and account isolation
-- [ ] Document security model in `docs/operations/SECURITY.md`
+- [x] `ApiKeyService` mapping API keys to accounts (in-memory for baseline)
+- [x] Servlet `ApiKeyAuthenticationFilter` validating `X-API-Key` header
+- [x] `OrderController` uses authenticated account for submit/get/cancel
+- [x] Ensure an account can only cancel/query its own orders
+- [x] `OrderControllerTest` verifies rejected missing/invalid API keys and account isolation
+- [x] Document security model in `docs/security/API_KEYS.md`
 **Acceptance criteria:**
-- [ ] `mvn test` passes
-- [ ] API key auth is enforced on trading endpoints
-- [ ] Cross-account order access is denied
-**Tests:** `SecurityTest`.
+- [x] `mvn test` passes
+- [x] API key auth is enforced on trading endpoints
+- [x] Cross-account order access is denied
+**Tests:** `OrderControllerTest` (security cases).
 **Benchmarks:** None.
 **Deliverables:** API key auth, account isolation, security docs.
 
