@@ -1,12 +1,17 @@
 # AGENT CONTEXT (keep short)
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle, OPT-007 completed). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-007 (reduce event-log serialization allocation: `BinaryCodec.encodeToBytes`,
-`CommandSerializer.toPayload`, `EventStore.append(Instant, String, byte[])` overload,
-remove `Event` payload clone on the hot path) completed and tests pass. Next candidates:
-OPT-008 (metrics batching), OPT-009 (randomized stress harness), OPT-010 (fixed-point
-numerics), OPT-011 (lock-free order book).
+cycle). This is ongoing/iterative work, not a numbered master-plan phase.
+**Current task:** OPT-007's code is done and tests pass, but its performance claim was
+re-validated in a controlled A/B (git worktree, OPT-006 `819cd63` vs OPT-007 `635219f`,
+same JDK/JVM/workload, 5 interleaved reps) and reclassified as **NO MEASURABLE
+IMPROVEMENT** — the mean delta was smaller than run-to-run noise on both commits. Fresh
+JFR profiling on HEAD shows `BigDecimal.valueOf`/boxing (not metrics) as the dominant
+allocation source, spread across risk/matching/settlement. Per the plan's own
+evidence-driven reordering rule, the recommended next step is **OPT-009** (randomized
+differential/financial-invariant stress harness) before attempting **OPT-010**
+(fixed-point numerics), since OPT-010 is high-risk without that safety net. OPT-008
+(metrics batching) is deprioritized — it does not appear in the current top frames.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -51,8 +56,13 @@ numerics), OPT-011 (lock-free order book).
   587.7k → 671.1k ops/s, **+14.2%**; matching-engine JMH: 3.37M → 4.23M ops/s).
 - OPT-007: added `BinaryCodec.encodeToBytes`, `CommandSerializer.toPayload`, and an
   `EventStore.append(Instant, String, byte[])` overload; removed the `Event` payload
-  clone from the hot path; `mvn test` green across all 16 modules.
+  clone from the hot path; `mvn test` green across all 16 modules. Controlled A/B
+  (5 reps, git worktree) found NO MEASURABLE IMPROVEMENT vs OPT-006 — kept for the
+  allocation-reduction engineering benefit only, not cited as a speedup.
 - Full `mvn test` green across all 16 modules after OPT-006 and OPT-007.
+- A settlement account-key `ConcurrentHashMap<Long, String>` cache was prototyped to
+  attack `SettlementService`/`InMemoryLedger` allocation, then reverted (not committed):
+  `long` → `Long` boxing on every cache lookup traded one allocation for another.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -64,15 +74,21 @@ numerics), OPT-011 (lock-free order book).
   pom-configured `BenchmarkRunner`); use `java -cp <classpath>` directly to run
   `ProfileRunner` / `SustainedSharedServiceDriver` instead (see `OPTIMIZATION_EVIDENCE.md`
   for the exact reproduction commands).
-- The sustained-driver benchmark environment became unstable during this session (memory
-  pressure / compressor activity, unrelated Docker/container churn). Measured throughput
-  dropped to ~200–300k ops/sec for both the committed OPT-006 baseline and the new
-  OPT-007 code, so reliable before/after numbers for OPT-007 are not available. Re-run
-  on a quiet, dedicated environment before declaring the OPT-007 speed-up.
+- The sustained-driver benchmark environment was unstable in the OPT-007 implementation
+  session (memory pressure / compressor activity, unrelated Docker/container churn),
+  producing ~200–300k ops/sec for both OPT-006 and OPT-007. A follow-up controlled A/B
+  (git worktree, both commits, same JVM/workload, 5 interleaved reps) on a calmer machine
+  state reproduced numbers consistent with the OPT-006 baseline (~690-701k ops/sec) for
+  both commits, confirming the earlier low readings were environmental, not a
+  regression — but also showing OPT-007 itself has no measurable throughput effect.
+  This machine is shared with an interactive Devin session, Microsoft Defender, and a
+  browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
-**Remaining backlog:** OPT-008 (metrics batching/offloading), OPT-009 (randomized
-financial-invariant stress harness), OPT-010 (fixed-point numerics in hot path),
-OPT-011 (lock-free / single-writer order book per symbol shard).
+**Remaining backlog (reordered based on fresh profiling — see `OPTIMIZATION_PLAN.md`):**
+OPT-009 (randomized financial-invariant stress harness) is next, ahead of OPT-010
+(fixed-point numerics, gated behind OPT-009) and OPT-008 (metrics batching, deprioritized
+since `MetricsService` does not appear in current top CPU/allocation frames). OPT-011
+(lock-free / single-writer sharded order book) remains last.
 
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
 `OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.

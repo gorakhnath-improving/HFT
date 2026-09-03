@@ -4,6 +4,80 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 16: OPT-007 controlled validation + evidence-discipline pass
+
+**Scope:** Follow-up to Session 15. Restore benchmark trustworthiness, give OPT-007 an
+honest evidence-based verdict, profile the current HEAD, and decide the next backlog
+item from measurement rather than assumption — per an explicit evidence-discipline
+directive (validated/preliminary/unvalidated/inconclusive labeling, no invented numbers,
+no silent evidence-level upgrades, continue existing OPT numbering, document reverted
+attempts).
+
+**Done:**
+- Reconnaissance: confirmed `HEAD=635219f`, working tree clean, `mvn test` green,
+  reviewed `OPTIMIZATION_PLAN.md`/`OPTIMIZATIONS.md`/`BENCHMARKS.md` and the existing
+  benchmark commands/driver rather than creating a parallel tracking system.
+- Inspected the benchmark host: Apple M-series, 10 cores, 16 GB RAM, JDK 25.0.2, macOS
+  26.6.2. At the time of the OPT-007 implementation session the machine had <300 MB free
+  RAM and heavy background load (this agent's own Electron process, Microsoft Defender
+  scanning, a browser); that explains the unreliable ~200-300k ops/sec readings recorded
+  in Session 15, not a code regression.
+- Built OPT-006 (`819cd63`) and OPT-007 (`635219f`) side by side via `git worktree`
+  (`/tmp/finex-opt006`) and ran a controlled 5-rep, interleaved A/B with identical
+  JDK/JVM/workload on a calmer machine state:
+  - OPT-006: mean 690,707.97 ops/s, stdev ≈43,268 (6.3%)
+  - OPT-007: mean 701,034.80 ops/s, stdev ≈41,020 (5.9%)
+  - Delta (+1.5%) is smaller than the noise floor on *both* commits.
+- **Verdict: OPT-007 = NO MEASURABLE IMPROVEMENT.** Reclassified in `OPTIMIZATIONS.md`,
+  `OPTIMIZATION_PLAN.md`, and `BENCHMARKS.md` from the earlier "COMPLETED / KEPT" framing
+  (which conflated "shipped and tested" with "performance validated") to an explicit
+  engineering-benefit-only verdict. The earlier ~200-300k readings are superseded by this
+  controlled run and documented as environmental.
+- Removed the git worktree after use (`git worktree remove /tmp/finex-opt006 --force`).
+- Re-profiled current HEAD with JFR (`settings=profile`) on the same driver. Top CPU
+  frames: `MatchingEngine.placeOrder`, `OrderService.processSubmitOrder`,
+  `BinaryCodec.encodeToBytes`, `RiskEngine.validate`/`RiskResult.ok`,
+  `SettlementService.settle`, `InMemoryLedger.post`. Top allocation frames:
+  `java.math.BigDecimal.valueOf` (143 samples) and `java.lang.Long.valueOf` (66,
+  boxing), traced to `OrderService.submitOrder`/`processSubmitOrder`,
+  `RiskEngine.validate`/`onTrade`, `AccountRiskState.reserveOrder`,
+  `SettlementService.settle`, and `MatchingEngine.placeOrder`.
+- **Backlog reorder decision (evidence-driven, per the plan's own override rule):**
+  `MetricsService`/Micrometer does not appear anywhere in the current top CPU or
+  allocation frames, so OPT-008 (metrics batching) is not supported by fresh evidence.
+  `BigDecimal`/boxing dominates allocation, which points at OPT-010 (fixed-point
+  numerics) — but that is explicitly gated behind OPT-009 (randomized
+  differential/financial-invariant stress harness) because changing numeric
+  representation in a financial engine without that safety net is unacceptable risk.
+  Revised order: **OPT-009 → re-profile → OPT-010 (only where justified) → OPT-008 (only
+  if a later profile supports it) → OPT-011 last.**
+- Documented (but did not commit) a reverted prototype: caching `SettlementService`
+  account keys in a `ConcurrentHashMap<Long, String>` was tried against the
+  `SettlementService`/`InMemoryLedger` hotspot and abandoned — `long` → `Long` boxing on
+  every lookup traded one allocation for another with no clear net benefit. Recorded per
+  the failure-handling policy as engineering evidence, not as a numbered OPT.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules (unchanged from Session 15; no application
+  code touched this session, only tracking/documentation and a temporary worktree).
+- Controlled A/B methodology: same JDK, same JVM defaults, same workload/seed, 5
+  interleaved repetitions, git-worktree isolation of the two commits being compared.
+
+**Blockers:** None. The earlier environment instability was diagnosed and is documented;
+it does not block correctness work, only requires multi-rep A/Bs instead of single runs
+on this particular machine.
+
+**Next session should:**
+- Build OPT-009: a deterministic, seeded, randomized command generator (submit/cancel,
+  partial fills, crossing/non-crossing, multiple accounts/instruments) plus a financial
+  invariant checker (cash conservation, asset conservation, double-entry balance,
+  position consistency, order/trade quantity conservation, PnL consistency, sequence
+  monotonicity) and a differential comparison harness (baseline vs. candidate engine).
+- Only after OPT-009 exists, revisit OPT-010 (fixed-point numerics) using it as the
+  correctness safety net, informed by the `BigDecimal`/boxing profile captured above.
+
+---
+
 ## 2026-09-03 — Session 15: OPT-007 — Reduce event-log serialization allocation
 
 **Scope:** Continuation of the post-master-plan performance engineering pass.

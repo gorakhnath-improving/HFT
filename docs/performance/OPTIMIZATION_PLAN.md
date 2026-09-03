@@ -78,7 +78,57 @@ machine during the session, so no verified OPT-007 throughput numbers are availa
 - OPT-005: COMPLETED — O(1) `AccountRiskState` reservation totals
 - OPT-006: COMPLETED — per-match collection pre-sizing, `BinaryCodec` per-thread buffer reuse,
   and `SustainedSharedServiceDriver` `BigDecimal` constants
-- OPT-007: COMPLETED — reduced event-log allocation by removing the `Event` payload clone,
-  adding a raw-payload `EventStore.append` overload, and introducing
-  `BinaryCodec.encodeToBytes`. `String` account-key caching and per-trade `LedgerEntry`
-  churn remain future work; benchmark environment became too noisy to measure this step.
+- OPT-007: code COMPLETED, performance NO MEASURABLE IMPROVEMENT — reduced event-log
+  allocation by removing the `Event` payload clone, adding a raw-payload
+  `EventStore.append` overload, and introducing `BinaryCodec.encodeToBytes`. A
+  controlled 5-rep A/B (git worktree, OPT-006 `819cd63` vs OPT-007 `635219f`, same
+  JDK/JVM/workload) found a mean delta smaller than run-to-run stdev on both commits
+  (see `OPTIMIZATIONS.md`). Kept for the allocation-reduction engineering benefit; not
+  cited as a throughput win. `String` account-key caching (attempted, reverted —
+  `Long` boxing cost) and per-trade `LedgerEntry` churn remain future work.
+
+## Evidence levels (per-optimization)
+
+| OPT | Status | Evidence level |
+|-----|--------|-----------------|
+| OPT-001 | In-place resting-order updates | VALIDATED (functional; no isolated throughput claim) |
+| OPT-002 | Skip market-data snapshot, no subscribers | VALIDATED (+27.9%) |
+| OPT-003 | Skip markToMarket when price unchanged | VALIDATED (+39.0%) |
+| OPT-004 | Latency percentile measurement | COMPLETED (tooling, not a speedup) |
+| OPT-005 | O(1) `AccountRiskState` reservation totals | VALIDATED (+327%) |
+| OPT-006 | Pre-sized collections, `BinaryCodec` buffer reuse, driver constants | VALIDATED (+14.2% vs OPT-005, 671.1k ops/s avg) |
+| OPT-007 | Event-log serialization allocation reduction | NO MEASURABLE IMPROVEMENT (controlled A/B; engineering benefit only) |
+
+Do not upgrade any of these levels without a new controlled benchmark run backing the
+change.
+
+## Fresh profiling on current HEAD (`635219f`, post-OPT-007) — order-change justification
+
+Re-profiled with JFR (`settings=profile`) on the same sustained driver used for the A/B
+above. CPU top frames: `MatchingEngine.placeOrder`, `OrderService.processSubmitOrder`,
+`BinaryCodec.encodeToBytes`, `RiskEngine.validate`/`RiskResult.ok`,
+`SettlementService.settle`, `InMemoryLedger.post`. Allocation top frames:
+`java.math.BigDecimal.valueOf` (143 samples, by far the largest single frame) and
+`java.lang.Long.valueOf` (66 samples, boxing), traced mostly to `OrderService.submitOrder`
+/ `processSubmitOrder`, `RiskEngine.validate`/`onTrade`, `AccountRiskState.reserveOrder`,
+`SettlementService.settle`, and `MatchingEngine.placeOrder` — i.e. `BigDecimal` arithmetic
+and autoboxing spread across risk, matching, and settlement, not metrics.
+
+**Order-change decision (per the plan's own override rule):** `MetricsService` /
+Micrometer calls do **not** appear in the top CPU or allocation frames at all in this
+profile. There is currently no evidence that OPT-008 (metrics batching) would move the
+needle. `BigDecimal.valueOf`/boxing is the dominant allocation source, which is squarely
+OPT-010's territory (fixed-point numerics) — but OPT-010 is explicitly gated behind
+OPT-009 (the randomized differential/financial-invariant stress harness), because
+replacing `BigDecimal` arithmetic without a correctness safety net on a financial engine
+is not acceptable risk.
+
+**Revised near-term order:** OPT-009 (stress harness) → re-profile → OPT-010 (fixed-point,
+only where the harness-backed profile justifies it) → OPT-008 (metrics) only if a later
+profile shows it as a real contributor → OPT-011 (sharded/single-writer) last, since it is
+the largest architectural change and should only be attempted once the single-threaded
+path's low-hanging allocation is gone.
+
+**Status of this reordering:** decision only, not yet executed. OPT-009 has not been
+started; do not mark it or OPT-010/011 as anything other than NOT STARTED until code
+exists.

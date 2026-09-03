@@ -49,17 +49,31 @@ symbol `BTC-USD`, single shared `OrderService`, 750,000 resulting trades in ever
 | After OPT-003 | 137,562.51 | +77.8% |
 | After OPT-005 | 587,705.20 | +659.8% |
 | After OPT-006 | 671,089.23 | +767.0% |
-| After OPT-007 | *deferred* | *deferred* |
+| After OPT-007 (controlled A/B, 5 reps) | 701,034.80 | not distinguishable from OPT-006 |
 
 This is the most rigorous end-to-end throughput measurement for the shared `OrderService`
 path; the JMH numbers above are shorter and more variable. This driver reports per-order
 latency percentiles; see `OPTIMIZATION_EVIDENCE.md` for the raw numbers.
 
-**Note:** The sustained driver became unreliable on the development machine during the
-OPT-007 session (memory pressure / unrelated Docker/container churn), producing ~200–300k
-ops/sec for both the committed OPT-006 baseline and the new OPT-007 code. A reliable
-OPT-007 before/after measurement therefore has not been recorded; re-run on a quiet
-environment before continuing the optimization pass.
+**OPT-007 controlled A/B (follow-up session):** `git worktree`-built OPT-006 (`819cd63`)
+and OPT-007 (`635219f`) side by side, same JDK/JVM/workload, 5 interleaved reps each:
+
+| Rep | OPT-006 ops/s | OPT-007 ops/s |
+|---|---:|---:|
+| 1 | 704,475.29 | 701,126.95 |
+| 2 | 694,249.24 | 777,475.46 |
+| 3 | 612,722.30 | 694,183.90 |
+| 4 | 696,191.45 | 673,111.72 |
+| 5 | 745,901.58 | 659,276.97 |
+| mean | 690,707.97 | 701,034.80 |
+| stdev | ≈43,268 | ≈41,020 |
+
+Mean delta (+1.5%) is smaller than the ≈6% run-to-run stdev on *both* commits — this is
+noise, not a validated speedup. See `OPTIMIZATIONS.md` OPT-007 for the full writeup and
+evidence-level classification (**NO MEASURABLE IMPROVEMENT**, engineering benefit only).
+The earlier ~200-300k ops/sec readings recorded during the OPT-007 implementation session
+were caused by transient machine load (memory pressure, background container activity)
+and are superseded by this controlled run.
 
 ### Latest latency percentiles (post OPT-006)
 

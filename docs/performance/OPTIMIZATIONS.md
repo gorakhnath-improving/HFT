@@ -507,13 +507,42 @@ allocated `byte[]`.
 - Updated `EventStoreTest.eventsAreImmutable` to pass a clone to `Event`, so the test
   still verifies that external mutation of the caller's array does not affect the store.
 
-**Benchmark:** A reliable before/after measurement on the sustained 1.5M-order driver is
-not available for this session because the benchmark environment became unstable
-(laptop memory pressure / unrelated container churn). The implementation is retained
-because it reduces object churn and passes all correctness tests; fresh measurements
-should be made on a quiet environment before the next optimization.
+**Benchmark (controlled A/B, follow-up session):** Built commit `819cd63` (OPT-006) and
+commit `635219f` (OPT-007) side by side via `git worktree`, same JDK 25.0.2, same JVM
+defaults, same workload (`SustainedSharedServiceDriver 1500000 500`), 5 interleaved
+repetitions each on the same machine session:
 
-**CPU/allocation result (post-change JFR, indicative only due to environment):**
+| Rep | OPT-006 ops/s | OPT-007 ops/s |
+|---|---:|---:|
+| 1 | 704,475.29 | 701,126.95 |
+| 2 | 694,249.24 | 777,475.46 |
+| 3 | 612,722.30 | 694,183.90 |
+| 4 | 696,191.45 | 673,111.72 |
+| 5 | 745,901.58 | 659,276.97 |
+| **mean** | **690,707.97** | **701,034.80** |
+| median | 696,191.45 | 694,183.90 |
+| min | 612,722.30 | 659,276.97 |
+| max | 745,901.58 | 777,475.46 |
+| stdev | ≈43,268 (6.3%) | ≈41,020 (5.9%) |
+
+Mean latency across the 5 runs: p50 ≈967 ns vs ≈983 ns; p99 ≈5,108 ns vs ≈5,217 ns;
+p99.9 ≈21,033 ns vs ≈19,792 ns.
+
+**Verdict: NO MEASURABLE IMPROVEMENT.** The +1.5% mean delta (≈10k ops/s) is smaller
+than the ≈41-43k ops/s (≈6%) run-to-run standard deviation measured for *both* commits
+on this machine. This is statistical noise, not a validated speedup. The change is an
+**engineering benefit** (fewer intermediate allocations in the event-log serialization
+path, confirmed by code inspection and by the allocation-profile shape from the original
+implementation session) but **not a demonstrated throughput or latency benefit** — the
+sustained-driver bottleneck lies elsewhere (matching, ledger/settlement, `BigDecimal`
+arithmetic), so reducing allocation in `CommandSerializer`/`BinaryCodec`/`Event` does not
+move the shared end-to-end number.
+
+**Evidence level: NO MEASURABLE IMPROVEMENT (engineering-only benefit).** Do not cite a
+throughput delta for OPT-007 in the final report.
+
+**CPU/allocation result (from the original implementation-session JFR, not re-verified in
+the controlled run above; treat as PRELIMINARY):**
 - `Event.<init>` and `CommandSerializer.toEvent` no longer appear as top allocation
   frames in the hot path.
 - `HeapByteBuffer.<init>` and `ByteBuffer.allocate` samples are gone from the event-log
@@ -526,7 +555,8 @@ should be made on a quiet environment before the next optimization.
 - `OrderServiceReplayTest` reconstructs the order book, ledger, and portfolio identically.
 - `EventStoreTest.eventsAreImmutable` still passes.
 
-**Decision:** KEEP.
+**Decision:** KEEP (code is a legitimate, low-risk allocation reduction and all tests
+pass), but tracked as performance-NEUTRAL, not a validated speedup.
 
 **Files changed:**
 - `finex-protocol/src/main/java/com/finex/protocol/BinaryCodec.java`
@@ -541,4 +571,13 @@ should be made on a quiet environment before the next optimization.
 (per-trade ledger entries and account-key string allocation), `BinaryCodec.encodePayload`
 (CPU), and `BigDecimal` arithmetic across risk/clearing/settlement/portfolio.
 
-**Status:** COMPLETED / KEPT.
+**Status:** COMPLETED (code) / NO MEASURABLE IMPROVEMENT (performance, controlled A/B).
+
+**Note on an abandoned follow-up (tracked here to preserve the record):** In the same
+follow-up session, settlement account-key caching via `ConcurrentHashMap<Long, String>`
+was prototyped to attack the `SettlementService`/`InMemoryLedger` hotspot named above.
+It was reverted before committing: caching by `long` account id requires boxing to `Long`
+on every cache lookup, which trades one allocation (the formatted `String`) for another
+(the boxed key) without a clear net win, and was not different enough from the `String`
+concatenation cost to justify the added complexity. No commit was made; this is recorded
+per the failure-handling policy (§31) as engineering evidence, not as a numbered OPT.

@@ -14,9 +14,16 @@
 
 - [x] OPT-007: further event-log/ledger allocation reduction (`Event` copy in
   `InMemoryEventStore.append`, `BinaryCodec` `ByteBuffer` intermediate allocation,
-  `CommandSerializer.toEvent` temporary `Event`). Implemented; measured improvement
-  deferred due to unstable benchmark environment.
-- [ ] OPT-008: Investigate metrics offloading/batching (`MetricsService` is still on the hot path).
-- [ ] OPT-009: Add randomized differential/financial-invariant stress harness.
-- [ ] OPT-010: Investigate fixed-point numerics for the hot path.
-- [ ] OPT-011: Investigate lock-free or single-writer order book per symbol shard.
+  `CommandSerializer.toEvent` temporary `Event`). Implemented and tests pass. Controlled
+  5-rep A/B (git worktree vs OPT-006) found **NO MEASURABLE IMPROVEMENT** — kept for the
+  allocation-reduction engineering benefit only; not a validated speedup.
+- [ ] OPT-009 (do next): Add randomized differential/financial-invariant stress harness.
+  Reordered ahead of OPT-008/010 because fresh JFR profiling shows `BigDecimal`/boxing
+  (not metrics) dominating allocation, and changing numeric representation safely
+  requires this harness first.
+- [ ] OPT-010: Investigate fixed-point numerics for the hot path — gated behind OPT-009.
+- [ ] OPT-008: Investigate metrics offloading/batching — deprioritized; `MetricsService`
+  does not appear in current top CPU/allocation frames. Revisit only if a future profile
+  supports it.
+- [ ] OPT-011: Investigate lock-free or single-writer order book per symbol shard — last,
+  after single-threaded allocation work is exhausted.
