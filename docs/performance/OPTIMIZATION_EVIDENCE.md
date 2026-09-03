@@ -123,3 +123,49 @@ Trade count remains 750,000 in every run.
   `MatchingEngine.placeOrder` (7), `OrderService.processSubmitOrder` (7),
   `InMemoryLedger.post` (6), `SustainedSharedServiceDriver.run` (5) — no single dominant
   bottleneck.
+
+See `OPTIMIZATIONS.md` for the full write-up, correctness verification, and decision.
+
+## OPT-004 — latency baseline
+
+Added per-order `System.nanoTime()` latency measurement to the sustained driver.
+
+| Run | Throughput (ops/s) | p50 (ns) | p90 (ns) | p99 (ns) | p99.9 (ns) | p99.99 (ns) | max (ns) |
+|----:|-------------------:|---------:|---------:|---------:|-----------:|------------:|---------:|
+| 1 | 136,847.79 | 3,375 | 20,458 | 29,375 | 50,250 | 95,459 | 26,963,083 |
+| 2 | 142,377.03 | 2,709 | 19,375 | 29,250 | 48,041 | 97,084 | 32,994,833 |
+| 3 | 133,462.71 | 2,667 | 20,167 | 27,917 | 48,250 | 101,042 | 33,439,000 |
+| **Avg** | **137,562.51** | **2,917** | **20,000** | **28,847** | **48,847** | **97,862** | **31,132,305** |
+
+The `max` latency is dominated by JVM warmup/compilation pauses during the short run;
+percentiles up to p99.99 are stable.
+
+## OPT-005 — before/after
+
+Same driver. Baseline is post-OPT-004 state.
+
+| Run | Before OPT-005 (ops/s) | After OPT-005 (ops/s) | p50 (ns) | p99 (ns) | p99.9 (ns) |
+|----:|----------------------:|------------------------:|---------:|---------:|-----------:|
+| 1 | 136,847.79 | 580,868.34 | 1,083 | 5,917 | 34,208 |
+| 2 | 142,377.03 | 585,924.72 | 1,125 | 6,000 | 26,542 |
+| 3 | 133,462.71 | 596,322.54 | 1,166 | 5,917 | 22,333 |
+| **Avg** | **137,562.51** | **587,705.20** | **1,125** | **5,938** | **27,694** |
+
+Delta vs OPT-004: **+450,142.69 ops/s, +327.2%**. Cumulative vs original baseline
+(pre-OPT-002): **+659.8%**.
+
+### JFR findings (before, post-OPT-004)
+
+- Top allocation: `java.math.BigDecimal.valueOf` was the dominant sampled allocation
+  class; many samples had call stacks through `AccountRiskState.projectedPosition`,
+  `InMemoryLedger.post`, and `SettlementService.settle`.
+- `AccountRiskState.reservedCash` / `reservedPosition` did a full
+  `ConcurrentHashMap.values().stream().reduce(...)` on every `RiskEngine.validate` call.
+
+### JFR findings (after)
+
+- `AccountRiskState` methods no longer appear in top CPU or allocation samples.
+- `BigDecimal.valueOf` sampled allocations dropped from ~486-650 per run to ~144 per run.
+- Top `com.finex.*` CPU frames are now `MatchingEngine.placeOrder` (9),
+  `OrderService.processSubmitOrder` (10), `InMemoryLedger.post` (7),
+  `RiskEngine.validate` (4), `BinaryCodec.encode` (3).

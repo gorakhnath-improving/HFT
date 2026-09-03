@@ -135,6 +135,27 @@ class RiskEngineTest {
     }
 
     @Test
+    void runningReservationTotalsAreConsistentAcrossMultipleOrders() {
+        RiskEngine engine = new RiskEngine(CONFIG);
+        AccountRiskState state = new AccountRiskState(1L, new BigDecimal("500000"), BigDecimal.ZERO, CONFIG);
+
+        Order order1 = order(1L, Side.BUY, OrderType.LIMIT, new BigDecimal("50000"), new BigDecimal("1"));
+        Order order2 = order(2L, Side.BUY, OrderType.LIMIT, new BigDecimal("50000"), new BigDecimal("2"));
+
+        engine.validate(order1, state, NOW, new BigDecimal("50000"));
+        engine.validate(order2, state, NOW, new BigDecimal("50000"));
+
+        assertThat(state.reservedCash()).isEqualTo(new BigDecimal("150000"));
+        assertThat(state.reservedPosition()).isEqualTo(new BigDecimal("3"));
+        assertThat(state.availableCash()).isEqualTo(new BigDecimal("350000"));
+
+        engine.onCancel(state, 1L);
+        assertThat(state.reservedCash()).isEqualTo(new BigDecimal("100000"));
+        assertThat(state.reservedPosition()).isEqualTo(new BigDecimal("2"));
+        assertThat(state.availableCash()).isEqualTo(new BigDecimal("400000"));
+    }
+
+    @Test
     void enforcesRateLimit() {
         RiskEngine engine = new RiskEngine(new RiskConfig(
                 new BigDecimal("1000"), new BigDecimal("500000"), new BigDecimal("100"),

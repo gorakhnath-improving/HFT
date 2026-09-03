@@ -1,16 +1,18 @@
 # AGENT CONTEXT (keep short)
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle, OPT-003 completed). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-003 (skip `markToMarket` when mark price is unchanged) completed,
-measured, and documented. Next candidate: event-log / `BinaryCodec.encodePayload` cost
-(not yet actioned).
+cycle, OPT-005 completed). This is ongoing/iterative work, not a numbered master-plan phase.
+**Current task:** OPT-005 (maintain O(1) reservation totals in `AccountRiskState`)
+completed, measured, and documented. Next candidate: event-log/ledger allocation
+(`SettlementService.settle`, `InMemoryLedger.post`, `CommandSerializer.toEvent`,
+`BinaryCodec.encode`) — not yet actioned.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
 - `finex-order-book` — `OrderBook`
 - `finex-matching-engine` — `MatchingEngine`, `MatchResult`, `Trade`
-- `finex-risk` — `RiskEngine` (including per-account rate limiting)
+- `finex-risk` — `RiskEngine` (including per-account rate limiting);
+  `AccountRiskState` now maintains O(1) running reservation totals (OPT-005)
 - `finex-market-data` — market-data events (`hasSubscribers()` added in OPT-002)
 - `finex-protocol` — binary codec
 - `finex-event-log` — append-only events, replay
@@ -21,39 +23,42 @@ measured, and documented. Next candidate: event-log / `BinaryCodec.encodePayload
 - `finex-settlement` — settlement orchestration
 - `finex-load-generator` — configurable load generator
 - `finex-benchmarks` — JMH/component/end-to-end benchmarks, JFR profiling,
-  `SustainedSharedServiceDriver` (long-running, low-variance evidence driver)
+  `SustainedSharedServiceDriver` (long-running, low-variance evidence driver; now
+  reports per-order latency percentiles, OPT-004)
 - `finex-api` — `OrderService` + controllers + metrics + security filters
 
 **Completed milestones:**
 - Phases 1-24 implemented and committed (see PROJECT_PLAN.md for full history).
 - OPT-001 (Phase 19): in-place resting-order updates in `OrderBook`/`MatchingEngine`.
-- OPT-002 (this session): eliminated unconditional market-data snapshot construction
-  (`BookUpdateFactory.aggregate`) when there are no subscribers. JFR-measured: was 56.8%
-  of all sampled allocations and the #1 CPU hotspot; removed entirely. Measured
-  throughput improvement ~+24% to +28% on a sustained 1.5M-order shared-`OrderService`
-  workload.
-- OPT-003 (this session): added a `lastMarkPrices` cache to `PortfolioService` so
-  `markToMarket` skips a full all-accounts scan when the mark price has not changed.
-  This was the top CPU frame after OPT-002 (`Position.mark`, 9% of CPU samples) and a
-  major `BigDecimal` allocator. After the fix it does not appear in the top CPU or
-  allocation samples. Throughput improved a further ~+39% (98,944 -> 137,563 ops/sec
-  average on the sustained driver). Cumulative improvement vs baseline: ~+78%.
-- Full `mvn test` green across all 16 modules after OPT-003.
+- OPT-002: eliminated unconditional market-data snapshot construction
+  (`BookUpdateFactory.aggregate`) when there are no subscribers (~+24-28% shared
+  `OrderService` throughput).
+- OPT-003: added a `lastMarkPrices` cache to `PortfolioService` so `markToMarket`
+  skips a full all-accounts scan when the mark price has not changed (~+39% further
+  throughput).
+- OPT-004: added per-order latency percentile measurement to
+  `SustainedSharedServiceDriver` (p50/p90/p99/p99.9/p99.99/max).
+- OPT-005: maintained running `totalReservedCash` / `totalReservedPosition` in
+  `AccountRiskState`, removing the O(open orders) stream/reduce on every
+  `RiskEngine.validate` call. Sustained shared-`OrderService` driver jumped from
+  ~137.5k ops/sec to ~587.7k ops/sec (**+327%**, cumulative vs baseline **+660%**).
+  Latency p50 ~1.1 µs, p99 ~5.9 µs, p99.9 ~28 µs.
+- Full `mvn test` green across all 16 modules after OPT-005.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
 **Known problems:** On this machine, local port 5432 can be occupied by unrelated Docker
 containers from other projects; pass `DB_PORT=<free-port>` when starting `docker compose up`.
 The `exec-maven-plugin` `exec:java` goal in `finex-benchmarks` does not reliably honor
-`-Dexec.mainClass` overrides on the CLI on this machine/plugin version (always runs the
+`-Dexec.mainClass` overrides on this machine/plugin version (always runs the
 pom-configured `BenchmarkRunner`); use `java -cp <classpath>` directly to run
 `ProfileRunner` / `SustainedSharedServiceDriver` instead (see `OPTIMIZATION_EVIDENCE.md`
 for the exact reproduction commands).
 
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
-and `OPTIMIZATION_EVIDENCE.md` for the OPT-002 / OPT-003 before/after evidence.
+`OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.
 
-**Last successful build:** `mvn test` green (all 16 modules) after OPT-003.
+**Last successful build:** `mvn test` green (all 16 modules) after OPT-005.
 
 **Important commands:**
 ```bash
@@ -65,7 +70,7 @@ mvn test                                # run full correctness suite
 mvn -q -pl finex-benchmarks dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" com.finex.benchmarks.BenchmarkRunner
 
-# Long, low-variance evidence driver (used for OPT-002 / OPT-003)
+# Long, low-variance evidence driver (used for OPT-002 through OPT-005)
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
   com.finex.benchmarks.SustainedSharedServiceDriver 1500000 500
 

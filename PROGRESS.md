@@ -4,6 +4,66 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 13: OPT-004 + OPT-005 — Latency measurement and O(1) risk reservation totals
+
+**Scope:** Continuation of the post-master-plan performance engineering pass; same
+measure-first methodology as previous sessions.
+
+**Done:**
+- Created `docs/performance/OPTIMIZATION_PLAN.md` with a prioritized, evidence-driven
+  backlog (latency measurement, allocation reduction, fixed-point numerics, lock-free
+  order book, async settlement, etc.) and explicit stopping conditions.
+- **OPT-004:** Added per-order `System.nanoTime()` latency measurement to
+  `SustainedSharedServiceDriver`. Output now reports p50/p90/p99/p99.9/p99.99/max in
+  nanoseconds alongside throughput. Added regression assertions in
+  `SustainedSharedServiceDriverTest`.
+- Re-profiled the post-OPT-004 baseline with JDK Flight Recorder (`settings=profile`)
+  on the sustained 1.5M-order driver. Identified the next dominant bottleneck:
+  `AccountRiskState.reservedCash()` / `reservedPosition()` were doing a full
+  `ConcurrentHashMap.values().stream().reduce(...)` on every `RiskEngine.validate`
+  call, repeatedly allocating `BigDecimal` sums for all open orders.
+- **OPT-005:** Added running `totalReservedCash` and `totalReservedPosition` fields to
+  `AccountRiskState`, updated incrementally on `reserveOrder`, `releaseOrder`, and
+  `applyTrade`. `reservedCash()` / `reservedPosition()` are now O(1) and return the
+  cached totals; `availableCash()` and `projectedPosition()` use them directly.
+- Added `runningReservationTotalsAreConsistentAcrossMultipleOrders` test to
+  `RiskEngineTest`.
+- Measured before/after on the sustained driver (3 runs each):
+  - Before (post-OPT-004): 137,562.51 ops/sec average
+  - After (post-OPT-005): 587,705.20 ops/sec average
+  - Delta: **+450,142.69 ops/sec, +327.2%**
+  - Cumulative vs original baseline (pre-OPT-002): **+659.8%**
+  Order-level throughput: **≈ 11.75M orders/sec** on a single shared `OrderService`.
+- Latency results:
+  - p50: ~2.9 µs → ~1.1 µs (≈ 60% reduction)
+  - p99: ~28.5 µs → ~5.9 µs (≈ 79% reduction)
+  - p99.9: ~49 µs → ~28 µs (≈ 43% reduction)
+- Re-profiled after OPT-005: `AccountRiskState` methods no longer appear in top CPU or
+  allocation samples. `BigDecimal.valueOf` allocation samples dropped from ~486-650 per
+  1.5M-order run to ~144 per run. The dominant remaining CPU/allocation frames are now
+  `MatchingEngine.placeOrder`, `InMemoryLedger.post`, `SettlementService.settle`,
+  `CommandSerializer.toEvent`, and `BinaryCodec.encode`.
+- Updated `docs/performance/OPTIMIZATION_PLAN.md` (status), `OPTIMIZATIONS.md`
+  (OPT-004 and OPT-005 entries), `OPTIMIZATION_EVIDENCE.md` (raw data and JFR
+  findings), `BENCHMARKS.md` (post-OPT-005 numbers and latency table),
+  `FINAL_BENCHMARK_REPORT.md` (new verdict and roadmap), `AGENT_CONTEXT.md`,
+  `TODO.md`.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no change
+  in final portfolio/ledger/cash behavior on the deterministic workload.
+
+**Blockers:** None.
+
+**Next session should:**
+- Tackle the next evidence-backed hotspot: event-log/ledger per-trade allocation
+  (`SettlementService.settle`, `InMemoryLedger.post`, `CommandSerializer.toEvent`,
+  `BinaryCodec.encode`). Profile first, then make a minimal, correctness-preserving
+  change. Continue down `OPTIMIZATION_PLAN.md`.
+
+---
+
 ## 2026-09-03 — Session 12: OPT-003 — Evidence-driven optimization (mark-to-market skip on unchanged price)
 
 **Scope:** Continuation of the post-master-plan performance engineering pass; same

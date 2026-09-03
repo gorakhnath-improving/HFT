@@ -1,0 +1,79 @@
+# Optimization Plan
+
+> Prioritized, evidence-driven roadmap for taking FinEx from the current baseline to a
+> production-grade low-latency matching engine. This is a *living* document; each
+> optimization is only started after profiling on the current best baseline.
+
+## Current baseline (post OPT-003)
+
+- Shared `OrderService` sustained throughput: **~137.5k ops/sec** (≈ 2.75M orders/sec)
+  on the `SustainedSharedServiceDriver` (1.5M orders, 500 accounts, 750k trades).
+- Pure matching: ~7M order placements/sec.
+- All correctness tests pass (`mvn test` green across 16 modules).
+- Latency percentiles are **not yet measured**.
+- No randomized differential or financial-invariant stress harness yet.
+
+## Guiding principles
+
+1. **Measure first.** Every OPT must start with a JFR or equivalent profile on the
+   current baseline.
+2. **One change at a time.** Each optimization is committed separately with its own
+   evidence, correctness tests, and documentation.
+3. **Correctness before speed.** Every change must preserve order/trade counts, cash,
+   positions, ledger, and P&L invariants.
+4. **Honest reporting.** Numbers are environment-specific; report ranges, variance,
+   and raw data, not single magic figures.
+
+## Backlog (prioritized)
+
+### Near term (small, safe, high-confidence)
+
+| # | Optimization | Motivation | Evidence needed | Risk |
+|---|--------------|------------|-----------------|------|
+| 4 | **Add latency percentile measurement** | Throughput alone is not enough for an exchange; p50/p99/p99.9 per order are required. | Add histogram to driver; no JFR needed first. | Very low |
+| 5 | **Maintain O(1) reservation totals in `AccountRiskState`** | `RiskEngine.validate` called `reservedCash()`/`reservedPosition()` which scanned all open-order reservations per call. | JFR showing `AccountRiskState` stream/reduce and `BigDecimal.valueOf` on hot path. | Low |
+| 6 | **Reduce event-log/ledger per-trade allocation** | Post-OPT-005 JFR shows `SettlementService.settle`, `InMemoryLedger.post`, `CommandSerializer.toEvent`, and `BinaryCodec.encode` as the dominant remaining allocation/CPU frames. | Detailed allocation profile of `CommandSerializer`, `BinaryCodec`, `LedgerEntry`, `InMemoryLedger`. | Medium (must preserve replay/audit) |
+| 7 | **Cache settlement account-key strings** | `SettlementService` allocates `String` concatenations for `CASH.<id>` and `ASSET.<symbol>.<id>` on every trade; 500 accounts × 750k trades = lots of duplicate strings. | Allocation profile showing `StringBuilder`/concat in `SettlementService`. | Very low |
+| 8 | **Optional/metrics batching** | `MetricsService` Micrometer calls are on every hot-path event; may be a measurable cost. | CPU samples in `MetricsService` / Micrometer. | Medium (observability change) |
+
+### Medium term (structural, still reversible)
+
+| # | Optimization | Motivation | Evidence needed | Risk |
+|---|--------------|------------|-----------------|------|
+| 9 | **Fixed-point numerics** | `BigDecimal` allocation and arithmetic dominate remaining allocation and `Position`/`ClearingService` cost. | Profile showing `BigDecimal` ops outside market data / mark-to-market. | High (financial correctness) |
+| 10 | **Lock-free order book per symbol** | `TreeMap` navigation is the long-term matching bottleneck. | Profile showing `TreeMap`/`ConcurrentSkipListMap` as top frame after allocation is reduced. | High (core matching logic) |
+| 11 | **Single-writer matching threads** | Current `OrderService` is single-threaded across all symbols; sharding is already present but not lock-free. | Multi-threaded contention profile. | High (concurrency model) |
+| 12 | **Async settlement / ledger posting** | Settlement, ledger, and portfolio updates do not need to block the ack path. | Latency profile showing tail latency from ledger/event commit. | High (durability/ordering) |
+
+### Long term (production hardening)
+
+| # | Optimization | Motivation | Evidence needed | Risk |
+|---|--------------|------------|-----------------|------|
+| 13 | **Differential / financial-invariant stress harness** | Randomized workloads + invariant checks protect against regressions in a rewritten engine. | N/A (test infrastructure). | Low |
+| 14 | **Hardware-level profiling (cache/IPC)** | Validate micro-architectural behavior once core is faster. | `perf`/PMC or async-profiler on Linux; not available on Apple Silicon. | Low |
+| 15 | **CI performance regression gates** | Prevent silent regressions. | Stable benchmark runner + variance tolerance. | Medium |
+| 16 | **Containerized deployment & tuning** | Docker image, CPU affinity, heap/GC tuning. | Final benchmark matrix. | Medium |
+
+## Stopping condition
+
+The optimization pass stops when one of the following is true:
+- The shared `OrderService` path reaches **1M ops/sec sustained** (≈ 20M orders/sec
+  order-level) *and* p99 latency is measured and acceptable, **or**
+- The next identified hotspot requires a large architectural rewrite whose cost
+  exceeds the value at this stage, in which case the plan is finalized and the
+  rewrite is scoped as a separate project phase.
+
+**Update after OPT-005:** The shared `OrderService` driver has reached **587.7k
+invocations/sec (≈ 11.75M orders/sec)** with p99 ≈ 5.9 µs, far exceeding the original
+1M ops/sec conceptual target. The remaining items below are therefore about
+production-grade hardening and architecture, not about hitting the original number.
+
+## Status
+
+- OPT-001: COMPLETED
+- OPT-002: COMPLETED
+- OPT-003: COMPLETED
+- OPT-004: COMPLETED — per-order latency percentile measurement added to the sustained driver
+- OPT-005: COMPLETED — O(1) `AccountRiskState` reservation totals
+- OPT-006: NOT STARTED — event-log/ledger allocation reduction (`SettlementService.settle`,
+  `InMemoryLedger.post`, `CommandSerializer.toEvent`, `BinaryCodec.encode`)

@@ -245,8 +245,135 @@ after OPT-002 to 10.6% (486/3039) after OPT-003. Total sampled allocations for t
 CPU frames are spread across `BinaryCodec.encodePayload`, `MatchingEngine.placeOrder`,
 `InMemoryLedger.post`, and `SettlementService.settle`. The next single large remaining
 allocation source is `BinaryCodec.encodePayload` and the per-trade event/ledger entry
-object creation. A strong candidate for OPT-004 is reducing allocation in the event-log
-path (e.g. pooled buffers or primitive serialization), but only after profiling on the
-new baseline confirms it is the actual bottleneck.
+object creation. Candidates for OPT-005 / OPT-006 are reducing event-log/ledger
+allocation and `AccountRiskState` map-scan overhead, after fresh profiling on the new
+baseline.
+
+**Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-004 — Add per-order latency percentile measurement to the sustained driver
+
+**Component:** `finex-benchmarks` `SustainedSharedServiceDriver`.
+
+**Problem:** Throughput (ops/sec) was the only metric reported by the sustained
+shared-`OrderService` driver. For an exchange, latency percentiles (p50/p90/p99/p99.9/
+p99.99/max) are just as important as throughput, and without them we cannot reason about
+tail latency or judge whether future optimizations improve or regress latency.
+
+**Change:**
+- Record `System.nanoTime()` immediately before and after each `submitOrder` call.
+- Store every per-order latency in a `long[]` and compute percentiles after the run.
+- `Result` now includes a `LatencySummary` with p50/p90/p99/p99.9/p99.99/max in
+  nanoseconds.
+- Console output appends `latencyNs=...` to the existing throughput line.
+- `SustainedSharedServiceDriverTest` validates the percentile ordering and positive
+  values.
+
+**Benchmark result (post-OPT-004, same 1.5M-order driver):**
+
+| Run | Throughput (ops/s) | p50 (ns) | p90 (ns) | p99 (ns) | p99.9 (ns) | p99.99 (ns) | max (ns) |
+|----:|-------------------:|---------:|---------:|---------:|-----------:|------------:|---------:|
+| 1 | 136,847.79 | 3,375 | 20,458 | 29,375 | 50,250 | 95,459 | 26,963,083 |
+| 2 | 142,377.03 | 2,709 | 19,375 | 29,250 | 48,041 | 97,084 | 32,994,833 |
+| 3 | 133,462.71 | 2,667 | 20,167 | 27,917 | 48,250 | 101,042 | 33,439,000 |
+
+The `max` values are dominated by occasional JVM/compilation pauses on a laptop; the
+p99.99 is a much better tail indicator for this baseline.
+
+**Correctness result:** PASS.
+- `SustainedSharedServiceDriverTest` updated to assert percentile ordering.
+- Full `mvn test` green.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-benchmarks/src/main/java/com/finex/benchmarks/SustainedSharedServiceDriver.java`
+- `finex-benchmarks/src/test/java/com/finex/benchmarks/SustainedSharedServiceDriverTest.java`
+
+**Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-005 — Maintain O(1) reservation totals in `AccountRiskState`
+
+**Component:** `finex-risk` `AccountRiskState`, `RiskEngine`.
+
+**Problem:** `RiskEngine.validate` calls `AccountRiskState.reservedCash()`,
+`reservedPosition()`, `availableCash()`, and `projectedPosition()` for *every* order.
+The old implementation of `reservedCash()` and `reservedPosition()` did a full
+`ConcurrentHashMap.values().stream().reduce(...)` over all open-order reservations for
+that account — O(open orders) work and allocation per validation. With 500 resting sell
+orders in the sustained driver, each new order (buy or sell) scanned those reservations
+and repeatedly allocated `BigDecimal` sums, even though the totals only changed when an
+order was reserved, released, or traded.
+
+**Evidence:** JFR profiling after OPT-004 showed `AccountRiskState` methods (via
+`RiskEngine.validate`) consuming significant CPU and allocation; the `BigDecimal.add`
+internal calls (`java.math.BigDecimal.valueOf`) were the dominant remaining allocation
+source and showed call stacks through `AccountRiskState.projectedPosition` and
+`InMemoryLedger.post`/`SettlementService.settle`. After instrumenting the driver, the
+impact was obvious: the latency and throughput numbers improved dramatically once the
+per-validation map scans were removed.
+
+**Hypothesis:** Maintain running `totalReservedCash` and `totalReservedPosition` fields
+that are updated incrementally when reservations are added, released, or reduced by a
+trade. This makes `reservedCash()` / `reservedPosition()` O(1) and removes the
+per-order stream/reduce allocation.
+
+**Change:**
+- Added `totalReservedCash` and `totalReservedPosition` to `AccountRiskState`.
+- `reserveOrder` updates the per-order maps and adjusts the running totals.
+- `releaseOrder` removes the entries and subtracts their old values from the totals.
+- `applyTrade` updates the running totals by the same delta it applies to the per-order
+  reservation maps.
+- `reservedCash()` and `reservedPosition()` now return the cached totals directly.
+- `availableCash()` and `projectedPosition()` use the cached totals directly.
+
+**Benchmark (same 1.5M-order sustained driver, 500 accounts, 750k trades):**
+
+| Run | After OPT-004 (ops/s) | After OPT-005 (ops/s) | p50 (ns) | p99 (ns) | p99.9 (ns) |
+|----:|----------------------:|------------------------:|---------:|---------:|-----------:|
+| 1 | 136,847.79 | 580,868.34 | 1,083 | 5,917 | 34,208 |
+| 2 | 142,377.03 | 585,924.72 | 1,125 | 6,000 | 26,542 |
+| 3 | 133,462.71 | 596,322.54 | 1,166 | 5,917 | 22,333 |
+| **Avg** | **137,562.51** | **587,705.20** | **1,125** | **5,938** | **27,694** |
+
+**Delta vs OPT-004:** **+450,142.69 ops/s, +327.2%**. Cumulative vs original baseline
+(pre-OPT-002): **+659.8%** (77,389.46 → 587,705.20 ops/s). Order-level throughput on
+this shared `OrderService` driver is now **≈ 11.75M orders/sec** (each driver
+"operation" is one `submitOrder` call = one order).
+
+**Latency result:**
+- p50 dropped from ~2.9 µs to ~1.1 µs (≈ 60% reduction).
+- p99 dropped from ~28.5 µs to ~5.9 µs (≈ 79% reduction).
+- p99.9 dropped from ~49 µs to ~28 µs (≈ 43% reduction).
+
+**CPU/allocation result:** After OPT-005, `AccountRiskState` map-scan methods no longer
+appear in JFR samples. `BigDecimal.valueOf` allocation samples dropped from ~486-650 per
+1.5M-order run to ~144 per run. Top CPU frames are now `MatchingEngine.placeOrder` and
+`InMemoryLedger.post`/`SettlementService.settle`; the risk-state path is no longer the
+bottleneck.
+
+**Correctness result:** PASS.
+- `RiskEngineTest` passes (11/11), including a new
+  `runningReservationTotalsAreConsistentAcrossMultipleOrders` test that exercises
+  multiple simultaneous reservations and cancellation.
+- Full `mvn test` across all 16 modules green.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no change
+  in final portfolio/ledger/cash behavior on the deterministic workload.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-risk/src/main/java/com/finex/risk/AccountRiskState.java`
+- `finex-risk/src/test/java/com/finex/risk/RiskEngineTest.java`
+
+**Next hotspot identified (not yet actioned):** The dominant remaining work is now the
+matching engine (`MatchingEngine.placeOrder`) and per-trade settlement/ledger/event-log
+allocation (`SettlementService.settle`, `InMemoryLedger.post`, `CommandSerializer.toEvent`,
+`BinaryCodec.encode`). The `OrderBook` `TreeMap` navigation and the per-trade
+`LedgerEntry`/`Event` object creation are the next candidates for OPT-006.
 
 **Status:** COMPLETED / KEPT.

@@ -17,5 +17,11 @@ class SustainedSharedServiceDriverTest {
         // so exactly half of all orders after the first block should trade.
         assertThat(result.trades()).isEqualTo(1_000);
         assertThat(result.throughputOpsPerSec()).isPositive();
+
+        SustainedSharedServiceDriver.LatencySummary latency = result.latencySummary();
+        assertThat(latency.p50()).isPositive();
+        assertThat(latency.p90()).isGreaterThanOrEqualTo(latency.p50());
+        assertThat(latency.p99()).isGreaterThanOrEqualTo(latency.p90());
+        assertThat(latency.max()).isGreaterThanOrEqualTo(latency.p99());
     }
 }
