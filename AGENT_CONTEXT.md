@@ -2,13 +2,12 @@
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
 cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-011 is **REJECTED / REVERTED — NO MEASURABLE IMPROVEMENT**. Fresh
-post-OPT-010 JFR ranked ConcurrentHashMap put/resize CPU first. Removing one redundant incoming
-order-cache write reduced the local `putVal` profile share, but a five-rep isolated interleaved A/B
-measured only +3.47% mean with paired deltas −9.7% to +19.5%, inside baseline variation and with
-no consistent latency/allocation gain. Production code was restored; only experiment evidence
-remains. OPT-010 remains validated and unchanged. Next candidate (not started): map growth/resize
-and boxed key/value data layout with explicit concurrency semantics.
+**Current task:** OPT-012 is **VALIDATED IMPROVEMENT / KEPT**. Three boxed reservation maps
+inside owner-serialized `FixedPointAccountRiskState` now use a primitive `LongLongHashMap`.
+Ten isolated interleaved pairs measured +5.09% mean throughput (+4.41% median); JFR Long
+allocation pressure fell 24.84%→11.26%, ConcurrentHashMap-node pressure 9.77%→7.18%, and GC
+pause 982→747 ms. Full tests and all seven 100k differential/replay/invariant profiles pass.
+OPT-011 remains rejected/reverted. Next candidate is not started.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -67,6 +66,8 @@ and boxed key/value data layout with explicit concurrency semantics.
   100k and BALANCED seed 7 at 1M. Controlled A/B: 555,942 vs 607,081 mean ops/s (+9.2%).
 - OPT-011: redundant order-cache write removal tested and reverted. +3.47% mean was inside
   benchmark noise; local profile improvement did not produce measurable end-to-end benefit.
+- OPT-012: primitive fixed-point reservation maps validated at +5.09% mean throughput; boxed
+  Long and ConcurrentHashMap-node allocation pressure reduced with all correctness gates green.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -89,8 +90,8 @@ and boxed key/value data layout with explicit concurrency semantics.
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
 **Remaining backlog:** OPT-008 remains deprioritized because metrics are absent from hot
-profiles. Next evidence-based candidate is a selectable map growth/boxed-data-layout experiment;
-do not begin it without separate authorization and an explicit concurrency contract.
+profiles. Next candidate is to compare primitive-map probing/layout against protocol/event
+byte-array allocation using a fresh profile; not started.
 
 **New commands (OPT-009 stress harness):**
 ```bash

@@ -104,6 +104,13 @@ ops/s (81,539 stdev); candidate was 811,992 (38,262 stdev), +3.47%. Paired delta
 allocation, GC, or latency improvement. The code was reverted. See `EXPERIMENTS.md` and
 `OPTIMIZATIONS.md` OPT-011.
 
+**OPT-012 controlled A/B:** Primitive fixed-point reservation maps, ten isolated interleaved
+1.5M-order pairs: baseline 758,374 mean / 754,974 median / 39,091 stdev; candidate 796,988 mean /
+788,250 median / 31,639 stdev. Mean delta **+5.09%**, median +4.41%, with 8/10 pairs positive.
+Median latency p50 875→875 ns, p90 1,750→1,605, p99 4,792→4,604, p99.9 21,063→16,459,
+p99.99 44,730→42,792, max 74.3→70.8 ms. JFR: Long allocation pressure 24.84%→11.26%,
+ConcurrentHashMap node 9.77%→7.18%, young GC 18→16, total pauses 982→747 ms.
+
 ### Latest latency percentiles (post OPT-006)
 
 | p50 | p90 | p99 | p99.9 | p99.99 | max |

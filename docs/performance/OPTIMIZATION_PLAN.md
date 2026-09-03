@@ -172,3 +172,15 @@ The change was reverted and is not claimed as an improvement.
 Next candidate, not started: investigate map growth/resize and boxed key/value data layout behind
 `ConcurrentHashMap.transfer`/`Long` allocation. Any experiment must preserve or explicitly isolate
 the concurrency contract and use the same differential/replay/invariant gates.
+
+## OPT-012 — VALIDATED IMPROVEMENT
+
+Replaced only the owner-serialized fixed-point risk reservation maps with a primitive open-address
+map. Ten isolated interleaved repetitions measured +5.09% mean throughput and +4.41% median;
+p90 through max median latency improved while p50 was unchanged. JFR confirmed Long allocation
+pressure 24.84%→11.26%, ConcurrentHashMap-node pressure 9.77%→7.18%, and GC pause
+982→747 ms. Full tests and all profiles at 100k differential/replay/invariants pass.
+
+Next candidate, not started: optimize primitive-map probing/layout only if a fresh profile and
+microbenchmark demonstrate value; otherwise protocol/event byte-array allocation is the next
+system-level measured source. Do not replace service-level concurrent maps based on OPT-012.

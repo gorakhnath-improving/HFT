@@ -4,6 +4,24 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 20: OPT-012 — Primitive fixed-point reservation maps
+
+**Change:** Replaced three boxed concurrent reservation maps inside owner-serialized
+`FixedPointAccountRiskState` with a tested primitive open-address `LongLongHashMap`. Default
+BigDecimal and service-level concurrent maps are unchanged.
+
+**Correctness:** 100k randomized map-reference operations, full 16-module `mvn test`, and all
+seven stress profiles at 100k commands passed differential, both replays, and both invariant sets.
+
+**Performance:** Ten isolated interleaved 1.5M-order pairs measured 758,374→796,988 mean ops/s
+(+5.09%) and 754,974→788,250 median (+4.41%). Eight pairs favored candidate. Median p90 through
+max improved; p50 was unchanged. JFR Long allocation pressure fell 24.84%→11.26%, CHM node
+9.77%→7.18%, young GC 18→16, and total pause 982→747 ms.
+
+**Verdict:** VALIDATED IMPROVEMENT / KEPT. Next candidate is not started.
+
+---
+
 ## 2026-09-03 — Session 19: OPT-011 — Redundant order-cache write experiment
 
 **Baseline/profile:** Five 1.5M-order fixed-point runs averaged 792,525 ops/s. A 3M-order JFR

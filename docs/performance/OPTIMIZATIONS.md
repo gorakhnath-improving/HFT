@@ -806,3 +806,33 @@ reverted because performance acceptance criteria were not met.
 and results are recorded in `EXPERIMENTS.md`. Next candidate is a separately selectable map
 data-layout/capacity experiment targeting resize transfer and boxed key/value traffic; do not
 weaken concurrency semantics without explicit design and evidence.
+
+---
+
+## OPT-012 — Primitive fixed-point reservation maps
+
+**Evidence/hypothesis:** Post-OPT-010 JFR attributed 24.84% allocation pressure to boxed Long,
+9.77% to ConcurrentHashMap nodes, and substantial CPU to map put/resize, with fixed-point
+reservation stacks prominent. Since `FixedPointAccountRiskState` is owner-serialized, replace
+only its three `Map<Long,Long>` instances with a primitive open-address map.
+
+**Change:** Added package-private `LongLongHashMap` using primitive arrays, positive order IDs,
+linear probing, tombstone reuse, and checked resizing. BigDecimal state and all service-level
+concurrent maps remain unchanged.
+
+**Correctness:** Dedicated tests include 100k randomized reference-map operations. Full 16-module
+`mvn test` and all seven 100k-command BigDecimal-vs-fixed differential/replay/invariant profiles
+pass.
+
+**Controlled A/B:** Ten isolated interleaved 1.5M-order pairs, reversing run order after five:
+baseline 758,374 mean / 754,974 median / 39,091 stdev; candidate 796,988 mean / 788,250 median /
+31,639 stdev. Mean delta **+5.09%**, median +4.41%; 8/10 pairs favored candidate. Median p50 was
+unchanged at 875 ns; p90 1,750→1,605 ns, p99 4,792→4,604 ns, p99.9 21,063→16,459 ns,
+p99.99 44,730→42,792 ns, max 74.3→70.8 ms.
+
+**JFR:** Long allocation pressure 24.84%→11.26%, ConcurrentHashMap node 9.77%→7.18%, young GC
+18→16, total GC pause 982→747 ms. `LongLongHashMap.put` is now the largest CPU frame (16.33%),
+showing map work remains but boxed/node allocation was reduced. No contention events.
+
+**Decision/status:** **VALIDATED IMPROVEMENT / KEPT.** Scope is owner-serialized fixed-point risk
+state only; this does not justify replacing service-level concurrent maps.

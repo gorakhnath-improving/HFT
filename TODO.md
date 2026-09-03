@@ -33,6 +33,8 @@
 - [x] OPT-011: Remove redundant incoming-order cache write. Controlled A/B measured +3.47%
   mean with paired results from −9.7% to +19.5%, inside baseline variation; no consistent
   latency/allocation improvement. **REJECTED / REVERTED — NO MEASURABLE IMPROVEMENT.**
-- [ ] Next candidate: investigate `ConcurrentHashMap` growth/resize and boxed key/value data
-  layout using a separately selectable implementation that preserves explicit concurrency
-  semantics. Not started.
+- [x] OPT-012: Primitive long-to-long reservation maps inside owner-serialized fixed-point risk
+  state. Ten-pair A/B: +5.09% mean throughput; Long allocation pressure 24.84%→11.26%; full
+  differential/replay/invariant gates pass. **VALIDATED IMPROVEMENT / KEPT.**
+- [ ] Next candidate: profile primitive-map probing/layout versus protocol/event byte-array
+  allocation and select only with fresh evidence. Not started.
