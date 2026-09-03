@@ -15,9 +15,7 @@ public final class FixedPointAccountRiskState {
     private final long accountId;
     private long cash;
     private long position;
-    private final LongLongHashMap reservedCashByOrder = new LongLongHashMap();
-    private final LongLongHashMap reservedPositionByOrder = new LongLongHashMap();
-    private final LongLongHashMap reservationPriceByOrder = new LongLongHashMap();
+    private final LongLongHashMap reservations = new LongLongHashMap();
     private long totalReservedCash;
     private long totalReservedPosition;
     private final Queue<Instant> orderTimestamps = new ArrayDeque<>();
@@ -80,32 +78,22 @@ public final class FixedPointAccountRiskState {
         long cashToReserve = side == Side.BUY
                 ? FixedPoint.multiplyExactRaw(reservationPrice, quantity)
                 : 0;
-        long oldCash = reservedCashByOrder.put(orderId, cashToReserve);
-        boolean hadCash = reservedCashByOrder.previousPresent();
-        long oldPosition = reservedPositionByOrder.put(orderId, signedQuantity);
-        boolean hadPosition = reservedPositionByOrder.previousPresent();
-        reservationPriceByOrder.put(orderId, reservationPrice);
-        if (hadCash) {
+        long oldCash = reservations.put(orderId, cashToReserve, signedQuantity, reservationPrice);
+        if (reservations.previousPresent()) {
             totalReservedCash = Math.subtractExact(totalReservedCash, oldCash);
-        }
-        if (hadPosition) {
-            totalReservedPosition = Math.subtractExact(totalReservedPosition, oldPosition);
+            totalReservedPosition = Math.subtractExact(
+                    totalReservedPosition, reservations.previousSecondaryValue());
         }
         totalReservedCash = Math.addExact(totalReservedCash, cashToReserve);
         totalReservedPosition = Math.addExact(totalReservedPosition, signedQuantity);
     }
 
     public void releaseOrder(long orderId) {
-        long oldCash = reservedCashByOrder.remove(orderId);
-        boolean hadCash = reservedCashByOrder.previousPresent();
-        long oldPosition = reservedPositionByOrder.remove(orderId);
-        boolean hadPosition = reservedPositionByOrder.previousPresent();
-        reservationPriceByOrder.remove(orderId);
-        if (hadCash) {
+        long oldCash = reservations.remove(orderId);
+        if (reservations.previousPresent()) {
             totalReservedCash = Math.subtractExact(totalReservedCash, oldCash);
-        }
-        if (hadPosition) {
-            totalReservedPosition = Math.subtractExact(totalReservedPosition, oldPosition);
+            totalReservedPosition = Math.subtractExact(
+                    totalReservedPosition, reservations.previousSecondaryValue());
         }
     }
 
@@ -113,46 +101,35 @@ public final class FixedPointAccountRiskState {
         long price = FixedPoint.toRawExact(trade.price());
         long quantity = FixedPoint.toRawExact(trade.quantity());
         long tradeValue = FixedPoint.multiplyExactRaw(price, quantity);
-        long reservationPrice = reservationPriceByOrder.getOrDefault(orderId, price);
+        long reservedCash = reservations.get(orderId);
+        boolean hadReservation = reservations.previousPresent();
+        long reservedPosition = reservations.previousSecondaryValue();
+        long reservationPrice = hadReservation ? reservations.previousTertiaryValue() : price;
         long releaseCash = FixedPoint.multiplyExactRaw(reservationPrice, quantity);
         long signedQuantity = side == Side.BUY ? quantity : Math.negateExact(quantity);
+        long remainingCash = side == Side.BUY ? Math.subtractExact(reservedCash, releaseCash) : reservedCash;
+        long remainingPosition = Math.subtractExact(reservedPosition, signedQuantity);
 
         if (side == Side.BUY) {
             cash = Math.subtractExact(cash, tradeValue);
             position = Math.addExact(position, quantity);
-            long remaining = Math.subtractExact(reservedCashByOrder.getOrDefault(orderId, 0L), releaseCash);
-            updateCashReservation(orderId, remaining);
         } else {
             cash = Math.addExact(cash, tradeValue);
             position = Math.subtractExact(position, quantity);
         }
 
-        long remainingPosition = Math.subtractExact(
-                reservedPositionByOrder.getOrDefault(orderId, 0L), signedQuantity);
-        updatePositionReservation(orderId, remainingPosition);
-    }
-
-    private void updateCashReservation(long orderId, long remaining) {
-        long previous = remaining == 0
-                ? reservedCashByOrder.remove(orderId)
-                : reservedCashByOrder.put(orderId, remaining);
-        if (reservedCashByOrder.previousPresent()) {
-            totalReservedCash = Math.subtractExact(totalReservedCash, previous);
+        if (hadReservation) {
+            totalReservedCash = Math.subtractExact(totalReservedCash, reservedCash);
+            totalReservedPosition = Math.subtractExact(totalReservedPosition, reservedPosition);
         }
-        if (remaining != 0) {
-            totalReservedCash = Math.addExact(totalReservedCash, remaining);
-        }
-    }
-
-    private void updatePositionReservation(long orderId, long remaining) {
-        long previous = remaining == 0
-                ? reservedPositionByOrder.remove(orderId)
-                : reservedPositionByOrder.put(orderId, remaining);
-        if (reservedPositionByOrder.previousPresent()) {
-            totalReservedPosition = Math.subtractExact(totalReservedPosition, previous);
-        }
-        if (remaining != 0) {
-            totalReservedPosition = Math.addExact(totalReservedPosition, remaining);
+        if (remainingCash == 0 && remainingPosition == 0) {
+            if (hadReservation) {
+                reservations.remove(orderId);
+            }
+        } else {
+            reservations.put(orderId, remainingCash, remainingPosition, reservationPrice);
+            totalReservedCash = Math.addExact(totalReservedCash, remainingCash);
+            totalReservedPosition = Math.addExact(totalReservedPosition, remainingPosition);
         }
     }
 }

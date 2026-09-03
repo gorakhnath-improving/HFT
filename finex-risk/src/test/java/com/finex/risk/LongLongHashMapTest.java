@@ -20,7 +20,15 @@ class LongLongHashMapTest {
         assertThat(map.put(1, 20)).isEqualTo(10);
         assertThat(map.previousPresent()).isTrue();
         assertThat(map.getOrDefault(1, -1)).isEqualTo(20);
-        assertThat(map.remove(1)).isEqualTo(20);
+        assertThat(map.put(1, 30, 40, 50)).isEqualTo(20);
+        assertThat(map.previousSecondaryValue()).isZero();
+        assertThat(map.previousTertiaryValue()).isZero();
+        assertThat(map.get(1)).isEqualTo(30);
+        assertThat(map.previousSecondaryValue()).isEqualTo(40);
+        assertThat(map.previousTertiaryValue()).isEqualTo(50);
+        assertThat(map.remove(1)).isEqualTo(30);
+        assertThat(map.previousSecondaryValue()).isEqualTo(40);
+        assertThat(map.previousTertiaryValue()).isEqualTo(50);
         assertThat(map.previousPresent()).isTrue();
         assertThat(map.remove(1)).isZero();
         assertThat(map.previousPresent()).isFalse();
