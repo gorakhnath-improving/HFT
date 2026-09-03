@@ -4,6 +4,30 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 18: OPT-010 — Fixed-point risk and clearing numerics
+
+**Done:** Added a checked scale-4 `long` fixed-point primitive; selectable fixed-point risk
+state/engine and clearing service; exact pre-append input validation; fixed-mode replay; and true
+BigDecimal-vs-fixed differential stress including canonical state, byte-identical events, both
+replays, and both invariant suites. BigDecimal remains the default/reference and external
+API/domain/protocol/event/ledger/portfolio representations remain unchanged.
+
+**Correctness:** All seven profiles passed 100k commands (seed 1); BALANCED passed 100k for
+seeds 42, 12345, and 7; final BALANCED seed 7 passed 1M commands in 881,271 ms. Full 16-module
+`mvn test` passed. Unsupported precision and all arithmetic overflow fail explicitly.
+
+**Performance:** Five interleaved 300k-order runs measured BigDecimal 555,942 mean ops/s
+(stdev 9,640) vs fixed 607,081 (stdev 37,134), a +9.2% mean delta. Median p50 through p99.99
+improved; max did not. JFR BigDecimal allocation samples fell 151→139, total samples remained
+660, and Long boxing rose 67→93. An intermediate conversion implementation introduced sampled
+BigInteger allocation and was corrected before final measurement.
+
+**Verdict:** VALIDATED IMPROVEMENT for representable scale-4 workloads; keep selectable fixed
+mode and retain BigDecimal as default/reference. Matching, portfolio, ledger, and boundary
+BigDecimal work remains intentionally outside this scoped integration. OPT-011 was not started.
+
+---
+
 ## 2026-09-03 — Session 17: OPT-009 — Randomized differential / financial-invariant stress harness
 
 **Scope:** Build the correctness oracle authorized as the next step after Session 16's

@@ -22,9 +22,11 @@
   from 10 to 1,000,000 generated commands across 7 workload profiles. Found and fixed a
   real pre-existing replay-truncation bug (rejected orders aborted `ReplayEngine`).
   Classified as correctness/validation infrastructure, not a performance change.
-- [ ] OPT-010 (do next): Investigate fixed-point numerics for the hot path, using the
-  OPT-009 harness as the correctness oracle. Motivated by JFR profiling showing
-  `BigDecimal.valueOf`/boxing dominating allocation in risk/matching/settlement.
+- [x] OPT-010: Checked scale-4 fixed-point numerics integrated into risk and clearing with
+  BigDecimal retained as default/reference. True differential/replay/invariant stress passed
+  through 1M commands. Controlled 5-rep A/B measured +9.2% mean throughput with improved
+  median p50–p99.99; JFR BigDecimal samples fell 151→139 but total samples were unchanged.
+  **VALIDATED IMPROVEMENT** for representable scale-4 workloads.
 - [ ] OPT-008: Investigate metrics offloading/batching — deprioritized; `MetricsService`
   does not appear in current top CPU/allocation frames. Revisit only if a future profile
   supports it.

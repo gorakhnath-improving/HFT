@@ -75,6 +75,27 @@ The earlier ~200-300k ops/sec readings recorded during the OPT-007 implementatio
 were caused by transient machine load (memory pressure, background container activity)
 and are superseded by this controlled run.
 
+**OPT-010 controlled A/B:** 300,000 orders, 500 accounts, `-Xms2g -Xmx2g`, five
+interleaved fresh-JVM repetitions per numeric mode:
+
+| Rep | BigDecimal ops/s | Fixed-point ops/s |
+|---|---:|---:|
+| 1 | 543,148.55 | 626,553.28 |
+| 2 | 558,424.20 | 643,083.48 |
+| 3 | 565,752.46 | 625,864.96 |
+| 4 | 563,455.58 | 589,064.80 |
+| 5 | 548,930.48 | 550,839.97 |
+| mean | 555,942.26 | 607,081.30 |
+| median | 558,424.20 | 625,864.96 |
+| stdev | 9,639.69 | 37,134.29 |
+
+Mean delta: **+9.2%**. Median latency across repetitions was BigDecimal/fixed-point:
+p50 1,041/916 ns, p90 2,709/2,334 ns, p99 11,167/10,000 ns, p99.9
+33,083/29,041 ns, p99.99 110,292/102,041 ns, max 37,674,958/38,407,084 ns.
+JFR allocation samples showed BigDecimal 151→139, Long 67→93, equal total allocation
+samples (660), and 8 young collections in each recording. See `OPTIMIZATIONS.md` OPT-010
+for correctness, scale/range, profiling caveats, and the full decision.
+
 ### Latest latency percentiles (post OPT-006)
 
 | p50 | p90 | p99 | p99.9 | p99.99 | max |

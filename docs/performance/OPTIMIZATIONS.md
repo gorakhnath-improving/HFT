@@ -714,3 +714,63 @@ on every cache lookup, which trades one allocation (the formatted `String`) for 
 (the boxed key) without a clear net win, and was not different enough from the `String`
 concatenation cost to justify the added complexity. No commit was made; this is recorded
 per the failure-handling policy (§31) as engineering evidence, not as a numbered OPT.
+
+---
+
+## OPT-010 — Fixed-point numerics in risk and clearing hot paths
+
+**Hypothesis:** Replacing object-heavy `BigDecimal` arithmetic in measured risk and clearing
+hot paths with checked primitive arithmetic will reduce allocation and improve throughput/tail
+latency without changing financial outcomes.
+
+**Representation and semantics:** `FixedPoint` is a signed `long` at scale 4
+(`FACTOR=10,000`), supporting `[-922337203685477.5808, 922337203685477.5807]`. Input
+conversion is exact; values or derived products requiring more than four non-zero decimal
+places fail with `ArithmeticException` rather than round. Add/subtract/negate use `Math.*Exact`.
+The general primitive multiply/divide operations use explicit `HALF_UP`; financial risk and
+clearing use `multiplyExactRaw`, preserving the reference's exact multiplication semantics.
+Price-collar comparison uses checked cross multiplication, equivalent to the reference's
+scale-20 `HALF_UP` ratio for scale-4 inputs. Overflow is deterministic and never silent.
+
+**Architecture:** Existing constructors retain `OrderService.NumericMode.BIG_DECIMAL` as the
+default/reference. `FIXED_POINT` selects `FixedPointRiskEngine`, primitive-backed
+`FixedPointAccountRiskState`, and `FixedPointClearingService`. API/domain, matching, ledger,
+portfolio, protocol, and event-log representations remain `BigDecimal`; persisted decimal-string
+wire semantics are unchanged. This intentionally limits conversion to measured hot paths rather
+than rewriting cold boundaries or scale-20 portfolio average-price logic.
+
+**Correctness evidence:** `StressHarness` now generates commands once and executes that same list
+against BigDecimal and fixed-point modes. It compares canonical exact numeric state plus event-log
+payloads, replays each mode into the same backend, and runs all financial invariants against both.
+All seven profiles passed at 100,000 commands (seed 1); BALANCED also passed seeds 42, 12345, and
+7 at 100,000. Final BALANCED seed 7 at 1,000,000 commands passed in 881,271 ms. Fast JUnit coverage
+also exercises 10/1,000 across all profiles/seeds and 10,000 BALANCED. Full `mvn test` is green.
+
+**Controlled A/B:** Same machine/JDK/JVM (`-Xms2g -Xmx2g`), same 300,000-order/500-account
+workload, five interleaved fresh-JVM repetitions per mode after final conversion cleanup:
+
+| Mode | Mean ops/s | Median ops/s | Stdev | Median p50 | p90 | p99 | p99.9 | p99.99 | max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| BigDecimal | 555,942 | 558,424 | 9,640 | 1,041 ns | 2,709 ns | 11,167 ns | 33,083 ns | 110,292 ns | 37,674,958 ns |
+| Fixed-point | 607,081 | 625,865 | 37,134 | 916 ns | 2,334 ns | 10,000 ns | 29,041 ns | 102,041 ns | 38,407,084 ns |
+
+Mean throughput delta: **+9.2%**. Fixed-point improved median p50/p90/p99/p99.9/p99.99;
+maximum latency remained JVM-pause dominated and did not improve. Fixed-point variance was higher,
+so the result is a validated improvement for this workload, not a universal performance claim.
+
+**JFR allocation evidence:** Identical 1.5M-order/500-account recordings showed sampled
+`BigDecimal` allocations falling from 151 to 139 (about 8%). The first implementation produced
+53 sampled `BigInteger` allocations via `unscaledValue()`; changing exact conversion to
+`movePointRight(SCALE).longValueExact()` removed `BigInteger` from the top allocation list.
+`Long` samples increased from 67 to 93 because reservation maps still box primitive keys/values.
+Total sampled allocations were equal (660 each); young GC count was 8 in each recording, and the
+fixed run had one old-GC event. A single profiled throughput run was 721,216 ops/s reference vs
+701,283 fixed, demonstrating profiling/run variance; the five-repetition non-profiled A/B above
+is the throughput decision evidence. Significant BigDecimal allocation remains in matching,
+portfolio, ledger boundaries, and fixed-to-BigDecimal result conversion.
+
+**Decision:** KEEP as **VALIDATED IMPROVEMENT** for representable scale-4 workloads, with the
+BigDecimal mode retained as default/reference. Do not claim support for arbitrary-precision input
+or that all engine numerics are fixed-point.
+
+**Status:** VALIDATED IMPROVEMENT.

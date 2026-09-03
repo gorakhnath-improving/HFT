@@ -2,7 +2,6 @@ package com.finex.common.numeric;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 
 public record FixedPoint(long raw) implements Comparable<FixedPoint> {
@@ -21,7 +20,7 @@ public record FixedPoint(long raw) implements Comparable<FixedPoint> {
         if (value == null) {
             throw new IllegalArgumentException("value must not be null");
         }
-        return value.setScale(SCALE, RoundingMode.UNNECESSARY).unscaledValue().longValueExact();
+        return value.movePointRight(SCALE).longValueExact();
     }
 
     public static BigDecimal toBigDecimal(long raw) {

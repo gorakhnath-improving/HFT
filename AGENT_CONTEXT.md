@@ -2,25 +2,22 @@
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
 cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-009 is COMPLETE: a deterministic randomized differential/
-financial-invariant stress harness (`com.finex.benchmarks.stress` in `finex-benchmarks`)
-now exists and is the mandatory correctness gate for OPT-010. It found and fixed a real,
-pre-existing replay-truncation bug (`OrderService`/`ReplayEngine` aborted replay entirely
-on the first rejected order in the event log). Validated deterministic/replay/invariant
-correctness from 10 to 1,000,000 generated commands across 7 workload profiles. OPT-007's
-code is done and tests pass, but its performance claim was re-validated in a controlled
-A/B and reclassified as **NO MEASURABLE IMPROVEMENT**. Next candidate: **OPT-010**
-(fixed-point numerics), using OPT-009 as the correctness oracle, motivated by JFR profiling
-showing `BigDecimal.valueOf`/boxing as the dominant allocation source. OPT-008 (metrics
-batching) remains deprioritized — it does not appear in the current top frames.
+**Current task:** OPT-010 is complete and classified **VALIDATED IMPROVEMENT** for
+representable scale-4 workloads. BigDecimal remains the default/reference; fixed mode replaces
+risk-state and clearing arithmetic with checked primitive values while preserving external
+BigDecimal and event/wire semantics. True differential, both-mode replay, and both-mode invariants
+passed through 1,000,000 commands. Five interleaved A/B repetitions measured +9.2% mean
+throughput and improved median p50–p99.99; JFR BigDecimal samples fell 151→139 but total sampled
+allocation was unchanged and Long boxing increased. OPT-008 remains evidence-deprioritized.
+OPT-011 has not started and requires separate authorization/evidence.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
 - `finex-order-book` — `OrderBook`
 - `finex-matching-engine` — `MatchingEngine`, `MatchResult`, `Trade`
   (`MatchResult` now returns engine-local pre-sized `ArrayList`/`HashMap` directly)
-- `finex-risk` — `RiskEngine` (including per-account rate limiting);
-  `AccountRiskState` maintains O(1) running reservation totals (OPT-005)
+- `finex-risk` — BigDecimal `RiskEngine` reference plus `FixedPointRiskEngine` and
+  primitive-backed `FixedPointAccountRiskState`; `AccountRiskState` maintains O(1) totals
 - `finex-market-data` — market-data events (`hasSubscribers()` added in OPT-002)
 - `finex-protocol` — binary codec (`BinaryCodec.encode` now reuses a per-thread
   `ByteArrayOutputStream`, OPT-006)
@@ -28,7 +25,7 @@ batching) remains deprioritized — it does not appear in the current top frames
 - `finex-shard` — symbol sharding
 - `finex-ledger` — double-entry ledger
 - `finex-portfolio` — positions and P&L (`lastMarkPrices` cache added in OPT-003)
-- `finex-clearing` — trade clearing and fees
+- `finex-clearing` — BigDecimal reference and selectable fixed-point trade clearing/fees
 - `finex-settlement` — settlement orchestration
 - `finex-load-generator` — configurable load generator
 - `finex-benchmarks` — JMH/component/end-to-end benchmarks, JFR profiling,
@@ -64,15 +61,11 @@ batching) remains deprioritized — it does not appear in the current top frames
 - A settlement account-key `ConcurrentHashMap<Long, String>` cache was prototyped to
   attack `SettlementService`/`InMemoryLedger` allocation, then reverted (not committed):
   `long` → `Long` boxing on every cache lookup traded one allocation for another.
-- OPT-009: added `com.finex.benchmarks.stress` (deterministic command generator, 7
-  workload profiles, canonical-state differential comparator, financial invariant
-  checker, `StressHarness`/`StressDriver`). `StressHarnessTest` runs as part of `mvn
-  test`; large-scale runs (100k/1M) use `StressDriver` manually, same convention as
-  `SustainedSharedServiceDriver`. Found and fixed a real replay-truncation bug in
-  `OrderService.submitOrder(SubmitOrderCommand, Instant)` — rejected orders were
-  appended to the event log before the risk check, and `ReplayEngine` had no way to
-  catch `OrderRejectedException` across the `finex-event-log`/`finex-api` module
-  boundary, so replaying any log with a rejection silently dropped every later event.
+- OPT-009: added the deterministic stress/differential/invariant/replay harness and fixed
+  rejected-order replay truncation.
+- OPT-010: added checked scale-4 `FixedPoint`, selectable fixed risk/clearing, exact
+  BigDecimal-vs-fixed differential and both-mode replay/invariants. Passed all profiles at
+  100k and BALANCED seed 7 at 1M. Controlled A/B: 555,942 vs 607,081 mean ops/s (+9.2%).
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -94,11 +87,9 @@ batching) remains deprioritized — it does not appear in the current top frames
   This machine is shared with an interactive Devin session, Microsoft Defender, and a
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
-**Remaining backlog (reordered based on fresh profiling — see `OPTIMIZATION_PLAN.md`):**
-OPT-009 is COMPLETE. Next is OPT-010 (fixed-point numerics, now unblocked, gated behind
-the OPT-009 harness) and OPT-008 (metrics batching, deprioritized since `MetricsService`
-does not appear in current top CPU/allocation frames). OPT-011 (lock-free / single-writer
-sharded order book) remains last.
+**Remaining backlog:** OPT-008 remains deprioritized because metrics are absent from hot
+profiles. OPT-011 (lock-free/single-writer sharding) remains unstarted; do not begin without
+separate evidence-based authorization.
 
 **New commands (OPT-009 stress harness):**
 ```bash
@@ -115,7 +106,7 @@ java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
 `OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.
 
-**Last successful build:** `mvn test` green (all 16 modules) after OPT-006.
+**Last successful build:** `mvn test` green across all 16 modules after OPT-010 integration.
 
 **Important commands:**
 ```bash

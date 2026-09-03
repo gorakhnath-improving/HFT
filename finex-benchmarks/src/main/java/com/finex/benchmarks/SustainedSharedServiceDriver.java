@@ -34,7 +34,10 @@ public final class SustainedSharedServiceDriver {
     public static void main(String[] args) {
         int totalOrders = args.length > 0 ? Integer.parseInt(args[0]) : 1_500_000;
         int accountCount = args.length > 1 ? Integer.parseInt(args[1]) : 500;
-        Result result = run(totalOrders, accountCount);
+        OrderService.NumericMode numericMode = args.length > 2
+                ? OrderService.NumericMode.valueOf(args[2].toUpperCase(Locale.ROOT))
+                : OrderService.NumericMode.BIG_DECIMAL;
+        Result result = run(totalOrders, accountCount, numericMode);
         System.out.println("orders=" + result.submitted()
                 + " trades=" + result.trades()
                 + " elapsedMs=" + (result.elapsedNanos() / 1_000_000)
@@ -64,7 +67,11 @@ public final class SustainedSharedServiceDriver {
     private static final BigDecimal QTY = new BigDecimal("0.01");
 
     public static Result run(int totalOrders, int accountCount) {
-        OrderService service = new OrderService();
+        return run(totalOrders, accountCount, OrderService.NumericMode.BIG_DECIMAL);
+    }
+
+    public static Result run(int totalOrders, int accountCount, OrderService.NumericMode numericMode) {
+        OrderService service = new OrderService(numericMode);
         Instant t = Instant.parse("2026-01-01T00:00:00Z");
         int trades = 0;
 

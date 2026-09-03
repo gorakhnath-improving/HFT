@@ -129,8 +129,9 @@ profile shows it as a real contributor → OPT-011 (sharded/single-writer) last,
 the largest architectural change and should only be attempted once the single-threaded
 path's low-hanging allocation is gone.
 
-**Status of this reordering:** executed. OPT-009 is COMPLETED (see below); OPT-010/011
-remain NOT STARTED until code exists for them specifically.
+**Status of this reordering:** executed. OPT-009 is COMPLETED and OPT-010 is a
+VALIDATED IMPROVEMENT (see below). OPT-008 remains evidence-deprioritized and OPT-011 has
+not started.
 
 ## OPT-009 — COMPLETED (correctness/validation infrastructure, not a performance change)
 
@@ -142,3 +143,18 @@ hold. Validated at 10 → 1,000,000 commands (see `OPTIMIZATIONS.md` OPT-009 for
 scale table). Found and fixed a real, pre-existing replay-truncation bug in
 `OrderService`/`ReplayEngine` (rejected orders in the event log aborted the entire replay).
 This harness is now the mandatory correctness gate before OPT-010.
+
+## OPT-010 — VALIDATED IMPROVEMENT
+
+Implemented a checked scale-4 `long` representation in the measured risk and clearing hot paths
+while retaining the existing BigDecimal mode as the default correctness reference and retaining
+BigDecimal protocol/event/API semantics. Unsupported precision and overflow fail explicitly.
+The OPT-009 harness now performs true reference-vs-fixed differential comparison, both-mode replay,
+and both-mode invariants. It passed all profiles at 100k and BALANCED seed 7 at 1M commands.
+
+Five interleaved 300k-order controlled repetitions measured 555,942 mean ops/s for BigDecimal and
+607,081 for fixed-point (+9.2%), with improved median p50 through p99.99. JFR sampled BigDecimal
+allocations fell about 8% (151 to 139), but total allocation samples did not fall and Long boxing
+increased (67 to 93), identifying remaining reservation-map/boundary costs. Keep the selectable
+implementation; retain BigDecimal as default/reference. See `OPTIMIZATIONS.md` for raw evidence
+and limitations. Do not begin OPT-011 without a separate evidence-based authorization.
