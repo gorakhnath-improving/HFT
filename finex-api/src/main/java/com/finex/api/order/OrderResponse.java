@@ -13,6 +13,7 @@ import com.finex.common.domain.enums.OrderStatus;
  */
 public record OrderResponse(
         long orderId,
+        long accountId,
         String clientOrderId,
         String symbol,
         com.finex.common.domain.enums.Side side,
@@ -28,6 +29,7 @@ public record OrderResponse(
     public static OrderResponse from(long orderId, Order order, List<Trade> trades, boolean addedToBook) {
         return new OrderResponse(
                 orderId,
+                order.accountId(),
                 order.clientOrderId(),
                 order.symbol(),
                 order.side(),
@@ -44,6 +46,7 @@ public record OrderResponse(
     public static OrderResponse rejected(Order order, String reason) {
         return new OrderResponse(
                 order.orderId(),
+                order.accountId(),
                 order.clientOrderId(),
                 order.symbol(),
                 order.side(),
