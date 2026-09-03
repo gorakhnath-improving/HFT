@@ -17,11 +17,14 @@
   `CommandSerializer.toEvent` temporary `Event`). Implemented and tests pass. Controlled
   5-rep A/B (git worktree vs OPT-006) found **NO MEASURABLE IMPROVEMENT** — kept for the
   allocation-reduction engineering benefit only; not a validated speedup.
-- [ ] OPT-009 (do next): Add randomized differential/financial-invariant stress harness.
-  Reordered ahead of OPT-008/010 because fresh JFR profiling shows `BigDecimal`/boxing
-  (not metrics) dominating allocation, and changing numeric representation safely
-  requires this harness first.
-- [ ] OPT-010: Investigate fixed-point numerics for the hot path — gated behind OPT-009.
+- [x] OPT-009: Add randomized differential/financial-invariant stress harness
+  (`com.finex.benchmarks.stress`). Validated deterministic/replay/invariant correctness
+  from 10 to 1,000,000 generated commands across 7 workload profiles. Found and fixed a
+  real pre-existing replay-truncation bug (rejected orders aborted `ReplayEngine`).
+  Classified as correctness/validation infrastructure, not a performance change.
+- [ ] OPT-010 (do next): Investigate fixed-point numerics for the hot path, using the
+  OPT-009 harness as the correctness oracle. Motivated by JFR profiling showing
+  `BigDecimal.valueOf`/boxing dominating allocation in risk/matching/settlement.
 - [ ] OPT-008: Investigate metrics offloading/batching — deprioritized; `MetricsService`
   does not appear in current top CPU/allocation frames. Revisit only if a future profile
   supports it.

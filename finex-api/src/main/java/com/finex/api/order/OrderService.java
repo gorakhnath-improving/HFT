@@ -142,7 +142,18 @@ public class OrderService implements CommandHandler {
 
     @Override
     public void submitOrder(SubmitOrderCommand command, Instant timestamp) {
-        processSubmitOrder(command, timestamp);
+        try {
+            processSubmitOrder(command, timestamp);
+        } catch (OrderRejectedException e) {
+            // processSubmitOrder already recorded the rejected order in orderCache before
+            // throwing (see below), matching the behavior submitOrder(OrderRequest, Instant)
+            // exposes to live callers. ReplayEngine has no way to catch this checked-by-type
+            // exception itself (finex-event-log cannot depend on finex-api), so it must be
+            // swallowed here: without this, replaying any event log that contains an order
+            // the risk engine rejected would abort the entire replay after that event and
+            // silently drop every subsequent event. This was found by the OPT-009 randomized
+            // differential/replay stress harness (finex-benchmarks stress package).
+        }
     }
 
     private MatchResult processSubmitOrder(SubmitOrderCommand command, Instant now) {

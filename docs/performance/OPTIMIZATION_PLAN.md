@@ -129,6 +129,16 @@ profile shows it as a real contributor → OPT-011 (sharded/single-writer) last,
 the largest architectural change and should only be attempted once the single-threaded
 path's low-hanging allocation is gone.
 
-**Status of this reordering:** decision only, not yet executed. OPT-009 has not been
-started; do not mark it or OPT-010/011 as anything other than NOT STARTED until code
-exists.
+**Status of this reordering:** executed. OPT-009 is COMPLETED (see below); OPT-010/011
+remain NOT STARTED until code exists for them specifically.
+
+## OPT-009 — COMPLETED (correctness/validation infrastructure, not a performance change)
+
+Built a deterministic randomized differential/financial-invariant stress harness
+(`com.finex.benchmarks.stress` in `finex-benchmarks`) that answers, for a given
+`(seed, profile, commandCount)`: is the engine deterministic across independent instances,
+does replay reproduce the same state, and do cash/asset/ledger/order/account invariants
+hold. Validated at 10 → 1,000,000 commands (see `OPTIMIZATIONS.md` OPT-009 for the full
+scale table). Found and fixed a real, pre-existing replay-truncation bug in
+`OrderService`/`ReplayEngine` (rejected orders in the event log aborted the entire replay).
+This harness is now the mandatory correctness gate before OPT-010.

@@ -573,6 +573,139 @@ pass), but tracked as performance-NEUTRAL, not a validated speedup.
 
 **Status:** COMPLETED (code) / NO MEASURABLE IMPROVEMENT (performance, controlled A/B).
 
+---
+
+## OPT-009 — Randomized differential / financial-invariant stress harness
+
+**Classification:** CORRECTNESS / VALIDATION INFRASTRUCTURE — not a performance change and
+not benchmarked as one. This is the safety net OPT-010 (fixed-point numerics) and OPT-011
+(single-writer/sharded matching) are gated behind.
+
+**Component:** New `com.finex.benchmarks.stress` package in `finex-benchmarks`
+(`WorkloadProfile`, `GeneratedCommand`, `CommandGenerator`, `ExecutionResult`,
+`CommandExecutor`, `EngineSnapshot`, `DifferentialComparator`, `FinancialInvariantChecker`,
+`StressHarness`, `StressHarnessResult`, `StressDriver`), plus one production fix in
+`finex-api`'s `OrderService`.
+
+**Objective:** Given a deterministic seed, answer three questions about the current single
+FinEx implementation, which together form the correctness oracle required before OPT-010:
+
+1. **Determinism** — do two independently constructed `OrderService` instances, fed the
+   exact same generated command sequence, end up in exactly the same canonical state?
+2. **Replay equivalence** — does replaying the resulting event log into a fresh engine
+   reproduce exactly the same canonical state as the original execution?
+3. **Financial invariants** — cash conservation, asset conservation, ledger double-entry
+   balance, order-quantity conservation, account isolation.
+
+There is currently only one FinEx engine implementation, so "reference vs optimized" from
+the OPT-009 specification is realized as (1) engine A vs. an independently constructed
+engine B (catches nondeterminism bugs) and (2) direct execution vs. event-log replay
+(catches event-sourcing bugs). Once a second implementation exists (e.g. a fixed-point
+engine for OPT-010), `StressHarness.run` can be pointed at it directly — it only depends on
+the public `OrderService` surface.
+
+**Design (built incrementally, per the plan's phased progression):**
+- `CommandGenerator.generate(seed, profile, commandCount)` is a pure function over
+  `java.util.Random(seed)` — same inputs always produce byte-for-byte the same command
+  list. Submits carry an `OrderRequest`; cancels reference an earlier submit's
+  `logicalIndex` rather than an order id, because the exchange-assigned order id is only
+  known once a command is actually executed, and is assigned identically by any engine fed
+  the same command sequence in the same order.
+- `WorkloadProfile` defines seven documented, illustrative (not market-calibrated)
+  distributions: `BALANCED`, `MATCH_HEAVY`, `CANCEL_HEAVY`, `RESTING_BOOK`, `CROSSING`,
+  `MULTI_ACCOUNT`, `MULTI_INSTRUMENT` — each with its own cancel ratio, crossing bias,
+  account count, and symbol count.
+- `CommandExecutor.execute` drives one `OrderService` through the generated commands,
+  recording the logical-index → order-id and logical-index → account-id maps
+  (`ExecutionResult`) needed by the snapshot/invariant/isolation checks. Risk rejections are
+  an expected, valid, deterministic outcome and are counted, not treated as harness
+  failures.
+- `EngineSnapshot.capture` builds a canonical, `equals()`-comparable snapshot: orders sorted
+  by order id, ledger entries in existing insertion order, portfolios sorted by account id
+  (positions sorted by symbol), and order-book views per symbol (already price/time ordered
+  by `OrderBook`, so no re-sorting needed). Object identity/hashCode are never compared.
+- `DifferentialComparator.compare` returns only the *first* divergence found (order id set,
+  then per-order fields, then ledger, then portfolios, then books) with enough detail to
+  reproduce it, rather than dumping full state.
+- `FinancialInvariantChecker.check` verifies, using only FinEx's existing accounting model
+  (no invented rules): cash conservation (`sum(cash - initial) + FEE.ACCRUAL == 0`), asset
+  conservation (`sum(position.quantity) == 0` per symbol), ledger double-entry balance
+  (`sum(debits) == sum(credits)`), order-quantity conservation (`0 <= remaining <= quantity`
+  and status/remaining agreement), and account isolation (every order still belongs to the
+  account that submitted it).
+- `StressHarness.run(seed, profile, commandCount)` wires all of the above together and
+  returns a `StressHarnessResult` with `seed`/`profile`/`commandCount` always attached, so
+  any failure is reproducible by re-running the same three arguments — no property-based
+  shrinking framework was introduced (not justified at this stage per the plan's own
+  guidance to avoid premature framework-building).
+- `StressHarnessTest` (JUnit, part of `mvn test`) runs all 7 profiles × 3 seeds at
+  `commandCount=10` and `commandCount=1,000`, plus one 10,000-command `BALANCED` run — fast
+  enough to stay in the normal test suite (≈0.6s total).
+- `StressDriver` (a `main` class, following the exact convention of
+  `SustainedSharedServiceDriver`/`ProfileRunner`) runs large-scale scenarios manually via
+  `java -cp`, not as part of `mvn test`.
+
+**Bug found (real, pre-existing, not introduced by OPT-009):** `OrderService.submitOrder`
+appends the `SUBMIT_ORDER` event *before* the risk check runs, so a rejected order is still
+recorded in the event log. `ReplayEngine.replay` had no way to catch the resulting
+`OrderRejectedException` (it is defined in `finex-api`, which `finex-event-log` cannot
+depend on without a cycle), so replaying any log containing a rejected order — a realistic
+occurrence under any sustained load, not a corner case — aborted the entire replay loop and
+silently dropped every event after that point. The hand-written `OrderServiceReplayTest`
+scenario was only 4 commands and never happened to trigger a rejection, so this had never
+been exercised. **Fix:** `OrderService.submitOrder(SubmitOrderCommand, Instant)` (the
+`CommandHandler` override `ReplayEngine` calls into) now catches and discards
+`OrderRejectedException`; the rejected order's state was already recorded by
+`processSubmitOrder` before it throws, so behavior after the fix matches what a live caller
+sees. Regression test `OrderServiceReplayRejectedOrderTest` reproduces the bug
+deterministically (11 orders in one second trips the default 10-orders/sec rate limit,
+followed by one more order a second later) and was confirmed to fail without the fix and
+pass with it.
+
+**Scale tested:**
+
+| Scale | Seeds | Profiles | Result |
+|---|---|---|---|
+| 10, 100 | 1, 42, 12345 | all 7 | PASS |
+| 1,000, 10,000 | 1, 42, 12345 | all 7 | PASS |
+| 100,000 | 7 | all 7 | PASS (elapsed 1.5s–79.8s per profile; `MULTI_ACCOUNT` was the slow outlier due to its larger account count, not a correctness issue) |
+| 1,000,000 | 7 | `BALANCED` | PASS (elapsed ≈684s / 11.4 min for the full determinism+replay+invariant run) |
+
+The harness itself is unoptimized by design (§18 of the plan: "OPT-009 is primarily
+correctness infrastructure... do NOT optimize the test harness prematurely") — it runs the
+scenario three times (engine A, engine B, replay) plus invariant checks, so its own runtime
+is not a proxy for `OrderService` throughput.
+
+**Correctness result:** PASS.
+- `mvn test` green across all 16 modules (134+ tests including 16 new `StressHarnessTest`
+  cases and the new replay regression test).
+- Determinism, replay equivalence, and all five invariants held at every scale tested above.
+
+**Decision:** KEEP. This becomes the mandatory correctness gate for OPT-010.
+
+**Files changed:**
+- `finex-benchmarks/src/main/java/com/finex/benchmarks/stress/*.java` (new package)
+- `finex-benchmarks/src/test/java/com/finex/benchmarks/stress/StressHarnessTest.java` (new)
+- `finex-api/src/main/java/com/finex/api/order/OrderService.java` (replay-truncation fix)
+- `finex-api/src/test/java/com/finex/api/order/OrderServiceReplayRejectedOrderTest.java` (new)
+
+**Known limitations:**
+- Only `LIMIT` orders are generated (no `MARKET` orders yet).
+- Two-engine determinism does not literally compare "reference vs optimized" since only one
+  implementation exists today; it will gain that meaning once OPT-010 introduces a second
+  implementation.
+- No automatic failure minimization/shrinking (not built per the plan's own guidance to
+  avoid premature framework investment; `(seed, profile, commandCount)` reproduction is
+  already exact and sufficient to debug any failure found so far).
+- 1M-scale testing was only run for the `BALANCED` profile in this session due to runtime
+  (≈11.4 minutes); the other six profiles were validated through 100k, not 1M.
+
+**Recommended next step:** OPT-010 (fixed-point numerics), using this harness as the
+correctness oracle, informed by the OPT-007-session JFR profile showing `BigDecimal.valueOf`
+and `Long.valueOf` boxing as the dominant allocation source in risk/matching/settlement.
+
+**Status:** COMPLETED / KEPT.
+
 **Note on an abandoned follow-up (tracked here to preserve the record):** In the same
 follow-up session, settlement account-key caching via `ConcurrentHashMap<Long, String>`
 was prototyped to attack the `SettlementService`/`InMemoryLedger` hotspot named above.

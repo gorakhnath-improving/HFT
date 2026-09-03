@@ -2,16 +2,17 @@
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
 cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-007's code is done and tests pass, but its performance claim was
-re-validated in a controlled A/B (git worktree, OPT-006 `819cd63` vs OPT-007 `635219f`,
-same JDK/JVM/workload, 5 interleaved reps) and reclassified as **NO MEASURABLE
-IMPROVEMENT** — the mean delta was smaller than run-to-run noise on both commits. Fresh
-JFR profiling on HEAD shows `BigDecimal.valueOf`/boxing (not metrics) as the dominant
-allocation source, spread across risk/matching/settlement. Per the plan's own
-evidence-driven reordering rule, the recommended next step is **OPT-009** (randomized
-differential/financial-invariant stress harness) before attempting **OPT-010**
-(fixed-point numerics), since OPT-010 is high-risk without that safety net. OPT-008
-(metrics batching) is deprioritized — it does not appear in the current top frames.
+**Current task:** OPT-009 is COMPLETE: a deterministic randomized differential/
+financial-invariant stress harness (`com.finex.benchmarks.stress` in `finex-benchmarks`)
+now exists and is the mandatory correctness gate for OPT-010. It found and fixed a real,
+pre-existing replay-truncation bug (`OrderService`/`ReplayEngine` aborted replay entirely
+on the first rejected order in the event log). Validated deterministic/replay/invariant
+correctness from 10 to 1,000,000 generated commands across 7 workload profiles. OPT-007's
+code is done and tests pass, but its performance claim was re-validated in a controlled
+A/B and reclassified as **NO MEASURABLE IMPROVEMENT**. Next candidate: **OPT-010**
+(fixed-point numerics), using OPT-009 as the correctness oracle, motivated by JFR profiling
+showing `BigDecimal.valueOf`/boxing as the dominant allocation source. OPT-008 (metrics
+batching) remains deprioritized — it does not appear in the current top frames.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -63,6 +64,15 @@ differential/financial-invariant stress harness) before attempting **OPT-010**
 - A settlement account-key `ConcurrentHashMap<Long, String>` cache was prototyped to
   attack `SettlementService`/`InMemoryLedger` allocation, then reverted (not committed):
   `long` → `Long` boxing on every cache lookup traded one allocation for another.
+- OPT-009: added `com.finex.benchmarks.stress` (deterministic command generator, 7
+  workload profiles, canonical-state differential comparator, financial invariant
+  checker, `StressHarness`/`StressDriver`). `StressHarnessTest` runs as part of `mvn
+  test`; large-scale runs (100k/1M) use `StressDriver` manually, same convention as
+  `SustainedSharedServiceDriver`. Found and fixed a real replay-truncation bug in
+  `OrderService.submitOrder(SubmitOrderCommand, Instant)` — rejected orders were
+  appended to the event log before the risk check, and `ReplayEngine` had no way to
+  catch `OrderRejectedException` across the `finex-event-log`/`finex-api` module
+  boundary, so replaying any log with a rejection silently dropped every later event.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -85,10 +95,22 @@ differential/financial-invariant stress harness) before attempting **OPT-010**
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
 **Remaining backlog (reordered based on fresh profiling — see `OPTIMIZATION_PLAN.md`):**
-OPT-009 (randomized financial-invariant stress harness) is next, ahead of OPT-010
-(fixed-point numerics, gated behind OPT-009) and OPT-008 (metrics batching, deprioritized
-since `MetricsService` does not appear in current top CPU/allocation frames). OPT-011
-(lock-free / single-writer sharded order book) remains last.
+OPT-009 is COMPLETE. Next is OPT-010 (fixed-point numerics, now unblocked, gated behind
+the OPT-009 harness) and OPT-008 (metrics batching, deprioritized since `MetricsService`
+does not appear in current top CPU/allocation frames). OPT-011 (lock-free / single-writer
+sharded order book) remains last.
+
+**New commands (OPT-009 stress harness):**
+```bash
+# Fast, part of mvn test:
+mvn -pl finex-benchmarks test -Dtest=StressHarnessTest
+
+# Large-scale manual run (same convention as SustainedSharedServiceDriver):
+mvn -q -DskipTests install
+mvn -q -pl finex-benchmarks dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt
+java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
+  com.finex.benchmarks.stress.StressDriver 7 ALL 100000
+```
 
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
 `OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.

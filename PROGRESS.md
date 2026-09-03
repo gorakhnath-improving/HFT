@@ -4,6 +4,88 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 17: OPT-009 — Randomized differential / financial-invariant stress harness
+
+**Scope:** Build the correctness oracle authorized as the next step after Session 16's
+evidence-discipline pass, following the plan's phased progression (tiny deterministic case
+→ hundreds → thousands → 100k → 1M) rather than a big-bang framework.
+
+**Done:**
+- New `com.finex.benchmarks.stress` package in `finex-benchmarks` (already depends on
+  `finex-api`, following the same module convention as `finex-load-generator` and the
+  existing driver classes):
+  - `WorkloadProfile`: 7 documented distributions (`BALANCED`, `MATCH_HEAVY`,
+    `CANCEL_HEAVY`, `RESTING_BOOK`, `CROSSING`, `MULTI_ACCOUNT`, `MULTI_INSTRUMENT`).
+  - `CommandGenerator`: pure, seeded (`java.util.Random(seed)`) generator producing
+    `GeneratedCommand.Submit`/`Cancel`; cancels reference an earlier submit's logical
+    index rather than an order id, since order ids are only assigned at execution time
+    but are assigned identically by any engine given the same command sequence.
+  - `CommandExecutor` / `ExecutionResult`: drives one `OrderService` through a generated
+    command list, tracking logical-index → order-id / account-id for later checks;
+    treats risk rejections as an expected, recorded outcome, not a harness failure.
+  - `EngineSnapshot` / `DifferentialComparator`: canonical, `equals()`-comparable
+    snapshots (orders by id, ledger entries in order, portfolios by account with
+    positions by symbol, order books by symbol) and a comparator that reports only the
+    first divergence with enough detail to reproduce it.
+  - `FinancialInvariantChecker`: cash conservation, asset conservation, ledger
+    double-entry balance, order-quantity conservation, account isolation — all derived
+    from FinEx's existing accounting model, no new financial rules invented.
+  - `StressHarness` / `StressHarnessResult`: ties the above into three checks
+    (determinism between two independent engines, replay equivalence, invariants) keyed
+    by a reproducible `(seed, profile, commandCount)`.
+  - `StressDriver`: a `main`-class driver for large-scale manual runs, following the
+    exact convention of `SustainedSharedServiceDriver`/`ProfileRunner` (not part of
+    `mvn test`).
+- Progressive validation, smallest to largest, stopping to investigate on any failure
+  (none needed after the fix below):
+  - 10, 100 commands × seeds {1, 42, 12345} × all 7 profiles: PASS.
+  - 1,000, 10,000 commands × same seeds/profiles: PASS.
+  - 100,000 commands × seed 7 × all 7 profiles: PASS (runtime 1.5s–79.8s per profile;
+    `MULTI_ACCOUNT`'s larger account count made it the slow outlier, not a correctness
+    issue — the harness itself is intentionally unoptimized).
+  - 1,000,000 commands × seed 7 × `BALANCED`: PASS (elapsed ≈684s / 11.4 min for the
+    full determinism + replay + invariant run). The other six profiles were validated
+    through 100k, not 1M, in this session due to runtime.
+- **Bug found and fixed:** the very first attempt at the replay-equivalence check threw
+  `OrderRejectedException` out of `ReplayEngine.replay`. Root cause:
+  `OrderService.submitOrder(OrderRequest, Instant)` appends the `SUBMIT_ORDER` event
+  *before* the risk check runs, so a rejected order is still recorded in the event log;
+  `ReplayEngine` had no way to catch `OrderRejectedException` (defined in `finex-api`,
+  which `finex-event-log` cannot depend on without a cycle), so replaying any log
+  containing a rejection aborted the loop and silently dropped every later event. This
+  is a real, pre-existing production bug never exercised by the small hand-written
+  `OrderServiceReplayTest` (4 commands, never rate-limited). Fixed by catching and
+  discarding `OrderRejectedException` in `OrderService.submitOrder(SubmitOrderCommand,
+  Instant)` (the `CommandHandler` override `ReplayEngine` calls into) — the rejected
+  order's state was already recorded by `processSubmitOrder` before the throw, so this
+  matches what a live caller already sees. Added regression test
+  `OrderServiceReplayRejectedOrderTest`, confirmed to fail without the fix (reproduced
+  the exact original stack trace) and pass with it.
+- `StressHarnessTest` (16 JUnit cases: 7 profiles × 3 seeds at commandCount=10 and 1,000,
+  plus one 10,000-command run) now runs as part of `mvn test`, staying fast (~0.6s).
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules (134+ tests, including the 16 new stress
+  cases and the new replay regression test).
+- Manually confirmed the regression test fails without the `OrderService` fix (same
+  stack trace as the original discovery) and passes with it — a real TDD-style
+  before/after check, not just a passing test after the fact.
+- Determinism, replay equivalence, and all five financial invariants held at every
+  scale tested (10 through 1,000,000 commands).
+
+**Blockers:** None. OPT-009 is explicitly classified as correctness/validation
+infrastructure, not benchmarked as a performance change (per the plan's own
+classification rule).
+
+**Next session should:**
+- Proceed to OPT-010 (fixed-point numerics), using `StressHarness` as the correctness
+  oracle, informed by the OPT-007-session JFR profile showing `BigDecimal.valueOf` and
+  `Long.valueOf` boxing as the dominant allocation source across risk, matching, and
+  settlement. Any fixed-point prototype must pass the full OPT-009 harness (determinism,
+  replay, invariants) before being considered for a performance benchmark.
+
+---
+
 ## 2026-09-03 — Session 16: OPT-007 controlled validation + evidence-discipline pass
 
 **Scope:** Follow-up to Session 15. Restore benchmark trustworthiness, give OPT-007 an
