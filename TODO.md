@@ -7,7 +7,8 @@
 - [x] OPT-003: skip `markToMarket` when the mark price has not changed.
 - [x] OPT-004: add per-order latency percentile measurement to `SustainedSharedServiceDriver`.
 - [x] OPT-005: maintain O(1) reservation totals in `AccountRiskState`.
-- [x] Full `mvn test` green after OPT-005.
+- [x] OPT-006: reduce per-match collection copies and encode-buffer allocation.
+- [x] Full `mvn test` green after OPT-006.
 
 ## Performance-engineering backlog (not yet in master plan)
 
