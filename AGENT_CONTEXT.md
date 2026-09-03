@@ -1,20 +1,23 @@
 # AGENT CONTEXT (keep short)
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
-cycle, OPT-005 completed). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-005 (maintain O(1) reservation totals in `AccountRiskState`)
-completed, measured, and documented. Next candidate: event-log/ledger allocation
-(`SettlementService.settle`, `InMemoryLedger.post`, `CommandSerializer.toEvent`,
-`BinaryCodec.encode`) — not yet actioned.
+cycle, OPT-006 completed). This is ongoing/iterative work, not a numbered master-plan phase.
+**Current task:** OPT-006 (reduce per-match collection copies, `BinaryCodec` per-thread
+buffer reuse, and benchmark-driver `BigDecimal` constants) completed, measured, and
+documented. Next candidate: OPT-007 — further event-log/ledger allocation reduction
+(`Event` copy in `InMemoryEventStore.append`, per-trade `LedgerEntry` creation,
+`String` account-key caching).
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
 - `finex-order-book` — `OrderBook`
 - `finex-matching-engine` — `MatchingEngine`, `MatchResult`, `Trade`
+  (`MatchResult` now returns engine-local pre-sized `ArrayList`/`HashMap` directly)
 - `finex-risk` — `RiskEngine` (including per-account rate limiting);
-  `AccountRiskState` now maintains O(1) running reservation totals (OPT-005)
+  `AccountRiskState` maintains O(1) running reservation totals (OPT-005)
 - `finex-market-data` — market-data events (`hasSubscribers()` added in OPT-002)
-- `finex-protocol` — binary codec
+- `finex-protocol` — binary codec (`BinaryCodec.encode` now reuses a per-thread
+  `ByteArrayOutputStream`, OPT-006)
 - `finex-event-log` — append-only events, replay
 - `finex-shard` — symbol sharding
 - `finex-ledger` — double-entry ledger
@@ -24,7 +27,8 @@ completed, measured, and documented. Next candidate: event-log/ledger allocation
 - `finex-load-generator` — configurable load generator
 - `finex-benchmarks` — JMH/component/end-to-end benchmarks, JFR profiling,
   `SustainedSharedServiceDriver` (long-running, low-variance evidence driver; now
-  reports per-order latency percentiles, OPT-004)
+  reports per-order latency percentiles, OPT-004, and uses `BigDecimal` constants,
+  OPT-006)
 - `finex-api` — `OrderService` + controllers + metrics + security filters
 
 **Completed milestones:**
@@ -37,13 +41,15 @@ completed, measured, and documented. Next candidate: event-log/ledger allocation
   skips a full all-accounts scan when the mark price has not changed (~+39% further
   throughput).
 - OPT-004: added per-order latency percentile measurement to
-  `SustainedSharedServiceDriver` (p50/p90/p99/p99.9/p99.99/max).
+  `SustainedSharedServiceDriver`.
 - OPT-005: maintained running `totalReservedCash` / `totalReservedPosition` in
   `AccountRiskState`, removing the O(open orders) stream/reduce on every
-  `RiskEngine.validate` call. Sustained shared-`OrderService` driver jumped from
-  ~137.5k ops/sec to ~587.7k ops/sec (**+327%**, cumulative vs baseline **+660%**).
-  Latency p50 ~1.1 µs, p99 ~5.9 µs, p99.9 ~28 µs.
-- Full `mvn test` green across all 16 modules after OPT-005.
+  `RiskEngine.validate` call (shared driver: 137.5k → 587.7k ops/s, **+327%**).
+- OPT-006: removed `List.copyOf`/`Map.copyOf` in `MatchingEngine` (pre-sized
+  collections), reused a `ThreadLocal<ByteArrayOutputStream>` in `BinaryCodec`, and
+  pre-computed `BigDecimal` constants in the sustained driver (shared driver:
+  587.7k → 671.1k ops/s, **+14.2%**; matching-engine JMH: 3.37M → 4.23M ops/s).
+- Full `mvn test` green across all 16 modules after OPT-006.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -58,7 +64,7 @@ for the exact reproduction commands).
 **Current benchmark:** See `docs/performance/FINAL_BENCHMARK_REPORT.md`, `BENCHMARKS.md`,
 `OPTIMIZATIONS.md`, `OPTIMIZATION_EVIDENCE.md`, and `OPTIMIZATION_PLAN.md`.
 
-**Last successful build:** `mvn test` green (all 16 modules) after OPT-005.
+**Last successful build:** `mvn test` green (all 16 modules) after OPT-006.
 
 **Important commands:**
 ```bash
@@ -70,7 +76,7 @@ mvn test                                # run full correctness suite
 mvn -q -pl finex-benchmarks dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" com.finex.benchmarks.BenchmarkRunner
 
-# Long, low-variance evidence driver (used for OPT-002 through OPT-005)
+# Long, low-variance evidence driver (used for OPT-002 through OPT-006)
 java -cp "finex-benchmarks/target/classes:$(cat /tmp/cp.txt)" \
   com.finex.benchmarks.SustainedSharedServiceDriver 1500000 500
 

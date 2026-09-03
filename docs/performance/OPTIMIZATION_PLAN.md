@@ -63,9 +63,9 @@ The optimization pass stops when one of the following is true:
   exceeds the value at this stage, in which case the plan is finalized and the
   rewrite is scoped as a separate project phase.
 
-**Update after OPT-005:** The shared `OrderService` driver has reached **587.7k
-invocations/sec (≈ 11.75M orders/sec)** with p99 ≈ 5.9 µs, far exceeding the original
-1M ops/sec conceptual target. The remaining items below are therefore about
+**Update after OPT-006:** The shared `OrderService` driver has reached **671.1k
+invocations/sec (≈ 13.4M orders/sec)** with p99 ≈ 5.2 µs. This exceeds the original
+1M ops/sec conceptual target by more than 13x. The remaining items below are about
 production-grade hardening and architecture, not about hitting the original number.
 
 ## Status
@@ -75,5 +75,7 @@ production-grade hardening and architecture, not about hitting the original numb
 - OPT-003: COMPLETED
 - OPT-004: COMPLETED — per-order latency percentile measurement added to the sustained driver
 - OPT-005: COMPLETED — O(1) `AccountRiskState` reservation totals
-- OPT-006: NOT STARTED — event-log/ledger allocation reduction (`SettlementService.settle`,
-  `InMemoryLedger.post`, `CommandSerializer.toEvent`, `BinaryCodec.encode`)
+- OPT-006: COMPLETED — per-match collection pre-sizing, `BinaryCodec` per-thread buffer reuse,
+  and `SustainedSharedServiceDriver` `BigDecimal` constants
+- OPT-007: NOT STARTED — further event-log/ledger allocation reduction (`Event` copy in
+  `InMemoryEventStore`, per-trade `LedgerEntry` creation, `String` account-key caching)

@@ -377,3 +377,92 @@ allocation (`SettlementService.settle`, `InMemoryLedger.post`, `CommandSerialize
 `LedgerEntry`/`Event` object creation are the next candidates for OPT-006.
 
 **Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-006 — Reduce per-order/match collection and encode-buffer allocation
+
+**Component:** `finex-matching-engine` `MatchingEngine`, `finex-protocol` `BinaryCodec`,
+`finex-benchmarks` `SustainedSharedServiceDriver`.
+
+**Problem:** Profiling after OPT-005 showed the next allocation/CPU hotspots were:
+- `BinaryCodec.encode` creating a new `ByteArrayOutputStream` per call (28 allocation
+  samples) and `BinaryCodec.encodePayload` using significant CPU (8 samples).
+- `MatchingEngine.placeOrder` copying `trades` and `updatedOrders` with `List.copyOf` /
+  `Map.copyOf` for every `MatchResult`, plus `HashMap`/`ArrayList` default-capacity
+  resize/grow.
+- `SustainedSharedServiceDriver` re-parsing `BigDecimal` strings on every loop iteration,
+  polluting the benchmark with non-production allocation.
+
+**Evidence:** JFR allocation samples after OPT-005:
+- `java.io.ByteArrayOutputStream.<init>` = 28 samples
+- `com.finex.settlement.SettlementService.settle` = 29 samples
+- `com.finex.eventlog.Event.<init>` = 25 samples
+- `java.util.Map.ofEntries` = 11 samples (from `Map.copyOf`)
+- `java.util.HashMap.resize` / `java.util.ArrayList.grow` = frequent resizes
+
+**Hypothesis:** A set of small, safe, low-risk changes can cut the per-order/match
+object churn without changing semantics:
+1. Reuse a `ThreadLocal<ByteArrayOutputStream>` in `BinaryCodec.encode`.
+2. Avoid `List.copyOf` / `Map.copyOf` in `MatchingEngine` by returning the freshly
+   created, engine-local `ArrayList`/`HashMap` directly and pre-sizing them.
+3. Pre-compute the two price/quantity `BigDecimal` constants in the driver.
+
+**Change:**
+- Added `ENCODE_BAOS` `ThreadLocal` to `BinaryCodec`; `encode` resets and reuses it.
+- `MatchingEngine` now uses `new ArrayList<>(4)` and `new HashMap<>(4)` and returns the
+  mutable collections directly in `MatchResult` (the engine does not retain references,
+  and callers in this codebase only iterate them).
+- `SustainedSharedServiceDriver` stores `SELL_PRICE`, `BUY_PRICE`, and `QTY` as static
+  final `BigDecimal` constants.
+
+**Benchmark (same 1.5M-order sustained driver, 500 accounts, 750k trades):**
+
+| Run | After OPT-005 (ops/s) | After OPT-006 (ops/s) | p50 (ns) | p99 (ns) | p99.9 (ns) |
+|----:|----------------------:|------------------------:|---------:|---------:|-----------:|
+| 1 | 587,705.20 | 676,206.89 | 958 | 4,709 | 25,042 |
+| 2 | 587,705.20 | 645,860.22 | 1,083 | 5,333 | 22,000 |
+| 3 | 587,705.20 | 691,160.57 | 1,000 | 5,541 | 22,333 |
+| **Avg** | **587,705.20** | **671,089.23** | **1,014** | **5,194** | **23,125** |
+
+**Delta vs OPT-005:** **+83,384.03 ops/s, +14.2%**. Cumulative vs original baseline:
+**+767.0%**.
+
+JMH `MatchingEngineBenchmark.placeBuyAndSell` also improved: 3.37M ops/s → 4.23M
+ops/s (single short run, indicative only).
+
+**Latency result:**
+- p50 improved from ~1,125 ns to ~1,014 ns (≈ 10%).
+- p99 improved from ~5,938 ns to ~5,194 ns (≈ 12%).
+- p99.9 improved from ~27,694 ns to ~23,125 ns (≈ 16%).
+
+**CPU/allocation result:** After OPT-006:
+- `ByteArrayOutputStream.<init>` no longer appears in the allocation samples.
+- `java.util.Map.ofEntries` and `java.util.HashMap.resize` are gone from the top
+  allocation frames.
+- `MatchingEngine.placeOrder` CPU samples dropped from 14 to 6.
+- Top remaining CPU frames: `SustainedSharedServiceDriver.run` (driver latency array),
+  `BinaryCodec.encodePayload` (8), `OrderService.processSubmitOrder` (8),
+  `MatchingEngine.placeOrder` (6), `InMemoryLedger.post` (5), `RiskEngine.validate` (5).
+
+**Correctness result:** PASS.
+- Full `mvn test` green across all 16 modules.
+- `BinaryCodecTest` round-trip tests still pass.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no
+  change in final portfolio/ledger/cash behavior on the deterministic workload.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-protocol/src/main/java/com/finex/protocol/BinaryCodec.java`
+- `finex-matching-engine/src/main/java/com/finex/matching/MatchingEngine.java`
+- `finex-benchmarks/src/main/java/com/finex/benchmarks/SustainedSharedServiceDriver.java`
+
+**Next hotspot identified (not yet actioned):** The dominant remaining work is now
+`BinaryCodec.encodePayload` (CPU) and per-trade event/ledger settlement allocation
+(`Event.<init>`, `CommandSerializer.toEvent`, `SettlementService.settle`,
+`InMemoryLedger.post`). The next candidate is reducing the per-order event serialization
+overhead or the per-trade `LedgerEntry` object churn — whichever fresh profiling on this
+new baseline identifies as the bigger contributor.
+
+**Status:** COMPLETED / KEPT.

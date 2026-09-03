@@ -169,3 +169,34 @@ Delta vs OPT-004: **+450,142.69 ops/s, +327.2%**. Cumulative vs original baselin
 - Top `com.finex.*` CPU frames are now `MatchingEngine.placeOrder` (9),
   `OrderService.processSubmitOrder` (10), `InMemoryLedger.post` (7),
   `RiskEngine.validate` (4), `BinaryCodec.encode` (3).
+
+See `OPTIMIZATIONS.md` for the full write-up, correctness verification, and decision.
+
+## OPT-006 — before/after
+
+Same driver. Baseline is post-OPT-005 state.
+
+| Run | Before OPT-006 (ops/s) | After OPT-006 (ops/s) | p50 (ns) | p99 (ns) | p99.9 (ns) |
+|----:|----------------------:|------------------------:|---------:|---------:|-----------:|
+| 1 | 587,705.20 | 676,206.89 | 958 | 4,709 | 25,042 |
+| 2 | 587,705.20 | 645,860.22 | 1,083 | 5,333 | 22,000 |
+| 3 | 587,705.20 | 691,160.57 | 1,000 | 5,541 | 22,333 |
+| **Avg** | **587,705.20** | **671,089.23** | **1,014** | **5,194** | **23,125** |
+
+Delta vs OPT-005: **+83,384.03 ops/s, +14.2%**. Cumulative vs original baseline
+(pre-OPT-002): **+767.0%**.
+
+### JFR findings (before, post-OPT-005)
+
+- Allocation: `java.io.ByteArrayOutputStream.<init>` 28 samples, `Event.<init>` 25,
+  `CommandSerializer.toEvent` 17, `SettlementService.settle` 29, `InMemoryLedger.post` 19.
+- CPU: `MatchingEngine.placeOrder` 14 samples, `BinaryCodec.encodePayload` 9,
+  `OrderService.processSubmitOrder` 8.
+
+### JFR findings (after)
+
+- `ByteArrayOutputStream.<init>` no longer appears in allocation samples.
+- `java.util.Map.ofEntries` and `java.util.HashMap.resize` gone from top allocation frames.
+- `MatchingEngine.placeOrder` CPU samples dropped from 14 to 6.
+- Top remaining CPU frames: `BinaryCodec.encodePayload` (8), `OrderService.processSubmitOrder`
+  (8), `InMemoryLedger.post` (5), `RiskEngine.validate` (5), `SettlementService.settle` (2).

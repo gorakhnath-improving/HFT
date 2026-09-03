@@ -33,6 +33,11 @@ public final class BinaryCodec {
     public static final byte ORDER_REJECTED = 5;
     public static final byte EXECUTION_REPORT = 6;
 
+    // Reusable per-thread encode buffer. It grows to the largest message seen by the
+    // thread and is reset between calls. It must not be shared across threads or calls.
+    private static final ThreadLocal<ByteArrayOutputStream> ENCODE_BAOS =
+            ThreadLocal.withInitial(() -> new ByteArrayOutputStream(256));
+
     private BinaryCodec() {
     }
 
@@ -43,9 +48,10 @@ public final class BinaryCodec {
         if (message == null) {
             throw new IllegalArgumentException("message must not be null");
         }
+        ByteArrayOutputStream baos = ENCODE_BAOS.get();
+        baos.reset();
+        DataOutputStream out = new DataOutputStream(baos);
         try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream(128);
-            DataOutputStream out = new DataOutputStream(baos);
             out.writeByte(typeOf(message));
             encodePayload(out, message);
             out.flush();

@@ -57,6 +57,12 @@ public final class SustainedSharedServiceDriver {
     /**
      * Runs the workload against a fresh {@link OrderService} and returns the outcome.
      */
+    // Pre-computed constants to avoid measuring BigDecimal string parsing inside the
+    // tight loop. The production code path still sees the same BigDecimal values.
+    private static final BigDecimal SELL_PRICE = new BigDecimal("49990");
+    private static final BigDecimal BUY_PRICE = new BigDecimal("50010");
+    private static final BigDecimal QTY = new BigDecimal("0.01");
+
     public static Result run(int totalOrders, int accountCount) {
         OrderService service = new OrderService();
         Instant t = Instant.parse("2026-01-01T00:00:00Z");
@@ -71,10 +77,11 @@ public final class SustainedSharedServiceDriver {
             // evenly between selling and buying, keeping cash/position bounded.
             boolean sell = ((i / accountCount) % 2 == 0);
             long account = 1000L + (i % accountCount);
-            BigDecimal price = sell ? new BigDecimal("49990") : new BigDecimal("50010");
+            BigDecimal price = sell ? SELL_PRICE : BUY_PRICE;
+            Side side = sell ? Side.SELL : Side.BUY;
             OrderRequest request = new OrderRequest(
-                    "cid-" + i, "BTC-USD", sell ? Side.SELL : Side.BUY, OrderType.LIMIT,
-                    price, new BigDecimal("0.01"), account);
+                    "cid-" + i, "BTC-USD", side, OrderType.LIMIT,
+                    price, QTY, account);
             MatchResult result = service.submitOrder(request, t);
             latencies[i] = System.nanoTime() - orderStart;
             trades += result.trades().size();

@@ -73,8 +73,8 @@ public class MatchingEngine {
             throw new IllegalArgumentException("now must not be null");
         }
 
-        List<Trade> trades = new ArrayList<>();
-        Map<Long, Order> updatedOrders = new HashMap<>();
+        List<Trade> trades = new ArrayList<>(4);
+        Map<Long, Order> updatedOrders = new HashMap<>(4);
         Order current = order;
 
         while (current.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -123,7 +123,7 @@ public class MatchingEngine {
             // A new limit order that has not been fully matched rests in the book.
             book.addOrder(current);
             updatedOrders.put(current.orderId(), current);
-            return new MatchResult(current, List.copyOf(trades), true, Map.copyOf(updatedOrders));
+            return new MatchResult(current, trades, true, updatedOrders);
         }
 
         if (current.type() == OrderType.MARKET && current.remainingQuantity().compareTo(BigDecimal.ZERO) > 0) {
@@ -132,7 +132,7 @@ public class MatchingEngine {
         }
 
         updatedOrders.put(current.orderId(), current);
-        return new MatchResult(current, List.copyOf(trades), false, Map.copyOf(updatedOrders));
+        return new MatchResult(current, trades, false, updatedOrders);
     }
 
     private Optional<Order> topOfOppositeSide(Side side) {

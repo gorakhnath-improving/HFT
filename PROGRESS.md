@@ -64,6 +64,67 @@ measure-first methodology as previous sessions.
 
 ---
 
+## 2026-09-03 — Session 14: OPT-006 — Reduce per-match collection copies and encode-buffer allocation
+
+**Scope:** Continuation of the post-master-plan performance engineering pass.
+
+**Done:**
+- Re-profiled the post-OPT-005 baseline with the sustained 1.5M-order driver and JFR
+  (`settings=profile`).
+- Identified the next top CPU/allocation hotspots:
+  - `BinaryCodec.encodePayload` (8 CPU samples) and `BinaryCodec.encode`
+    allocating a new `ByteArrayOutputStream` per call (28 allocation samples).
+  - `MatchingEngine.placeOrder` (14 CPU samples) plus `List.copyOf`/`Map.copyOf`
+    (`Map.ofEntries` 11 allocation samples, `HashMap.resize` / `ArrayList.grow`
+    due to default capacities).
+  - `SustainedSharedServiceDriver.run` re-parsing `BigDecimal` strings inside the
+    tight loop, polluting the benchmark with non-production allocation.
+- **Change (3 small, safe, independent improvements):**
+  1. `BinaryCodec.encode` now reuses a `ThreadLocal<ByteArrayOutputStream>` per
+     thread, resetting it between calls.
+  2. `MatchingEngine.placeOrder` now returns the engine-local `ArrayList`/`HashMap`
+     directly in `MatchResult` and pre-sizes them with capacity 4, avoiding
+     `List.copyOf`/`Map.copyOf` and resize/grow.
+  3. `SustainedSharedServiceDriver` stores `SELL_PRICE`, `BUY_PRICE`, and `QTY` as
+     static final `BigDecimal` constants.
+- Measured before/after on the sustained driver (3 runs each):
+  - Before (post-OPT-005): 587,705.20 ops/sec average
+  - After (post-OPT-006): 671,089.23 ops/sec average
+  - Delta: **+83,384.03 ops/sec, +14.2%**
+  - Cumulative vs original baseline: **+767.0%**
+  Order-level throughput: **≈ 13.42M orders/sec**.
+- Latency results (post-OPT-006):
+  - p50: ~1.1 µs → ~1.0 µs (≈ 10% reduction)
+  - p99: ~5.9 µs → ~5.2 µs (≈ 12% reduction)
+  - p99.9: ~28 µs → ~23 µs (≈ 16% reduction)
+- JMH `MatchingEngineBenchmark.placeBuyAndSell` improved: 3.37M ops/s → 4.23M
+  ops/s (single short indicative run).
+- Re-profiled after OPT-006:
+  - `ByteArrayOutputStream.<init>` no longer appears in allocation samples.
+  - `java.util.Map.ofEntries` and `java.util.HashMap.resize` gone from top allocation.
+  - `MatchingEngine.placeOrder` CPU samples dropped from 14 to 6.
+  - Top remaining CPU frames: `BinaryCodec.encodePayload` (8), `OrderService.processSubmitOrder` (8),
+    `MatchingEngine.placeOrder` (6), `InMemoryLedger.post` (5), `RiskEngine.validate` (5).
+- Updated `OPTIMIZATIONS.md` (OPT-006 entry), `OPTIMIZATION_EVIDENCE.md` (raw data and JFR),
+  `BENCHMARKS.md` (post-OPT-006 numbers and latency table),
+  `FINAL_BENCHMARK_REPORT.md` (new verdict and roadmap), `AGENT_CONTEXT.md`,
+  `OPTIMIZATION_PLAN.md` (status), `TODO.md`.
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules.
+- Differential check: identical order/trade counts (1,500,000 → 750,000) and no change
+  in final portfolio/ledger/cash behavior on the deterministic workload.
+
+**Blockers:** None.
+
+**Next session should:**
+- Tackle the next evidence-backed hotspot: per-trade event/ledger allocation
+  (`Event.<init>`, `CommandSerializer.toEvent`, `SettlementService.settle`,
+  `InMemoryLedger.post`) or `String` account-key caching — profile first, then pick
+  the larger contributor.
+
+---
+
 ## 2026-09-03 — Session 12: OPT-003 — Evidence-driven optimization (mark-to-market skip on unchanged price)
 
 **Scope:** Continuation of the post-master-plan performance engineering pass; same
