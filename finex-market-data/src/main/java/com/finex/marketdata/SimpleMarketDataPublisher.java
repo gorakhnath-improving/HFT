@@ -33,4 +33,9 @@ public class SimpleMarketDataPublisher implements MarketDataPublisher {
             listener.onEvent(event);
         }
     }
+
+    @Override
+    public boolean hasSubscribers() {
+        return !listeners.isEmpty();
+    }
 }

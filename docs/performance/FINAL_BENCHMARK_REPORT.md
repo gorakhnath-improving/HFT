@@ -48,7 +48,15 @@ submits 20 orders):
 3. **Single-threaded `OrderService`** — all callers currently serialize through one
    instance; there is no lock-free shared book.
 4. **Event append + object copying** for every order and trade.
-5. **Synchronous market-data publish + metrics recording** on the order thread.
+5. ~~Synchronous market-data publish + metrics recording on the order thread~~ —
+   **partially fixed by OPT-002** (see `OPTIMIZATIONS.md`): `OrderService` no longer
+   builds a full `BookUpdate` snapshot (which walked the entire order book and did
+   `BigDecimal.add()` per price level) when there are no market-data subscribers. JFR
+   profiling showed this was **56.8% of all sampled allocations** and the #1 CPU
+   hotspot before the fix; measured throughput on a sustained 1.5M-order shared-service
+   workload improved by roughly **+24% to +28%** (see `OPTIMIZATION_EVIDENCE.md`).
+   Metrics recording (`MetricsService`) is unconditional and still runs on the hot
+   path — it was not addressed by OPT-002 and remains a candidate for future work.
 
 ## Roadmap to a real 1M/sec shared matching engine
 

@@ -4,6 +4,63 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 11: OPT-002 — Evidence-driven optimization (market-data snapshot elimination)
+
+**Scope:** Post-master-plan performance engineering pass, following a strict
+measure-first methodology (reconnaissance → baseline → JFR profiling → hypothesis →
+minimal change → benchmark → correctness verification → documentation).
+
+**Done:**
+- Reconnaissance: confirmed the existing tracking system (`PROJECT_PLAN.md`,
+  `PROGRESS.md`, `TODO.md`, `AGENT_CONTEXT.md`, `DESIGN_DECISIONS.md`,
+  `docs/performance/*`) and extended it rather than creating a new one.
+- Established baseline: ran full `mvn test` (green), recorded hardware/software
+  environment (Apple Silicon, 10 cores, 16 GB RAM, JDK 25.0.2).
+- Built a reproducible, deterministic 1.5M-order sustained-load driver
+  (`com.finex.benchmarks.SustainedSharedServiceDriver`) with bounded per-account
+  cash/position (side flips every `accountCount` orders) for low-variance measurement.
+- Profiled with JDK Flight Recorder (`settings=profile`): found
+  `BookUpdateFactory.aggregate` (called unconditionally from
+  `OrderService.publishBookUpdate`, even with zero market-data subscribers) was the
+  **#1 CPU hotspot** and **56.8% of all sampled allocations**.
+- **OPT-002:** added `MarketDataPublisher.hasSubscribers()` and guarded
+  `OrderService.publishBookUpdate` / `publishMatchEvents` to skip snapshot/event
+  construction entirely when nobody is subscribed. Zero behavior change when a
+  subscriber exists (verified by new tests).
+- Added regression tests: `MarketDataPublisherTest.hasSubscribersReflects...`,
+  `OrderServiceMarketDataTest` (both "subscribed" and "no subscriber" cases).
+- Measured before/after on the sustained driver (3 runs each): **+24% to +28%
+  throughput** on the shared, no-subscriber `OrderService` path (77,389 → ~95,710-98,944
+  ops/sec average). Re-profiled after the change: `BookUpdateFactory` no longer appears
+  in CPU or allocation samples at all.
+- Documented full methodology, raw data, and reproduction commands in
+  `docs/performance/OPTIMIZATION_EVIDENCE.md`; wrote up the OPT-002 entry (with the
+  Component/Problem/Evidence/Hypothesis/Change/Benchmark/Correctness/Decision schema)
+  in `docs/performance/OPTIMIZATIONS.md`; cross-referenced from
+  `docs/performance/FINAL_BENCHMARK_REPORT.md` and `BENCHMARKS.md`.
+- Identified (but did not action) the next hotspot: `Position.mark` in
+  `PortfolioService.markToMarket`, now the top CPU frame post-OPT-002. This is
+  legitimate financial work, not wasted work, so it needs its own investigation
+  before any change (candidate OPT-003).
+
+**Verified:**
+- `mvn test` — SUCCESS across all 16 modules (finex-api: 31/31 including 3 new tests;
+  finex-benchmarks: new `SustainedSharedServiceDriverTest` passes).
+- Differential check: identical order/trade counts (1,500,000 → 750,000) before and
+  after the change on the same deterministic workload.
+
+**Blockers:** None. Noted a local `exec-maven-plugin` quirk (documented in
+`AGENT_CONTEXT.md`) where `-Dexec.mainClass` overrides are not honored on this
+machine/plugin version; worked around by invoking `java -cp` directly.
+
+**Next session should:**
+- Investigate OPT-003 (`Position.mark` / `markToMarket` cost) with the same
+  measure-first methodology, or continue down the priority list in the performance
+  engineering master prompt (allocation reduction, fixed-point numerics, order-book
+  structure, single-writer architecture) — always evidence first, one change at a time.
+
+---
+
 ## 2026-09-03 — Session 10: Phases 23-24 — Documentation Consolidation and Final Benchmark Campaign
 
 **Phase:** 23 → 24 (done)

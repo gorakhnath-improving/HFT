@@ -1,9 +1,12 @@
 # Optimizations
 
-> Placeholder — recorded starting Phase 19, including failed optimizations with useful
-> engineering insight (Master Plan §35).
+> Recorded starting Phase 19, including failed optimizations with useful engineering
+> insight (Master Plan §35). Each entry follows: Component / Problem / Evidence /
+> Hypothesis / Change / Before / After / Delta / Correctness / Decision / Status.
+> All numbers are measured on this machine (Apple Silicon macOS, JDK 25.0.2, 10 cores,
+> 16 GB RAM) and are not portable performance claims.
 
-## Phase 19 — First optimization: in-place resting-order updates
+## OPT-001 (Phase 19) — In-place resting-order updates
 
 ### Hypothesis
 
@@ -43,3 +46,112 @@ The in-place update is a correctness-preserving cleanup and removes unnecessary 
 is kept. It is not a breakthrough optimization. The next evidence-driven optimization cycle
 (Phase 24) should benchmark alternative book structures (`Long2ObjectOpenHashMap`, sorted
 arrays, intrusive lists) and fixed-point price representation.
+
+**Status:** COMPLETED / KEPT.
+
+---
+
+## OPT-002 — Skip market-data snapshot construction when there are no subscribers
+
+**Component:** `finex-api` `OrderService` (`publishBookUpdate`, `publishMatchEvents`),
+`finex-market-data` `MarketDataPublisher` / `SimpleMarketDataPublisher`.
+
+**Problem:** `OrderService.publishBookUpdate` unconditionally rebuilt a full `BookUpdate`
+snapshot on *every single order submission* — regardless of whether anything was actually
+subscribed to market data. Building that snapshot means:
+1. `OrderBook.getBids()` / `getAsks()` copy every resting order on both sides into new
+   `ArrayList`s (`flatView`).
+2. `BookUpdateFactory.aggregate()` then walks that list and calls `BigDecimal.add()`
+   repeatedly to build per-price-level totals, allocating a new `PriceLevel` per level.
+
+This work was thrown away immediately whenever `SimpleMarketDataPublisher` had zero
+listeners — which is the case in every benchmark, the load generator, and any real
+deployment where nobody has subscribed yet.
+
+**Evidence:** JFR profiling (JDK Flight Recorder, `settings=profile`) of an ad hoc
+1.5M-order driver (500 accounts, alternating buy/sell blocks to keep cash/position
+bounded, single shared `OrderService`, no market-data subscriber) taken *before* the
+change:
+
+- CPU (`jdk.ExecutionSample`, leaf frame): `BookUpdateFactory.aggregate` was the #1
+  hotspot at 46/1389 sampled leaf frames (3.3%) — more than triple the next highest
+  `com.finex.*` frame (`OrderBook.getAsks`, 15/1389).
+- Allocation (`jdk.ObjectAllocationSample`, leaf frame): `java.math.BigDecimal.valueOf`
+  was **60.7%** of all sampled allocations (3288/5420), and **3077 of those 3288**
+  (93.6% of the `BigDecimal.valueOf` samples, 56.8% of *all* sampled allocations) were
+  attributed directly to `BookUpdateFactory.aggregate(List)` line 38
+  (`currentQty = currentQty.add(qty)`).
+
+Raw recordings: `/tmp/finex-baseline.jfr` (before), `/tmp/finex-after.jfr` (after) —
+not committed (binary JFR files are not checked into the repository).
+
+**Hypothesis:** Guarding both `publishBookUpdate` and `publishMatchEvents` with a cheap
+`publisher.hasSubscribers()` check (backed by `!listeners.isEmpty()` on the existing
+`CopyOnWriteArrayList`) eliminates all of that wasted work with **zero behavior change**
+when a subscriber is actually present, since the guard only skips work whose entire
+result would otherwise be silently discarded by `SimpleMarketDataPublisher.publish`.
+
+**Change:**
+- Added `boolean hasSubscribers()` to the `MarketDataPublisher` interface and
+  `SimpleMarketDataPublisher` (checks `!listeners.isEmpty()`).
+- `OrderService.publishBookUpdate` returns immediately if `!publisher.hasSubscribers()`,
+  before touching the order book at all.
+- `OrderService.publishMatchEvents` adds the same guard alongside its existing
+  `result.trades().isEmpty()` short-circuit.
+- `getOrderBook()` (the REST/API order-book snapshot endpoint) is unaffected — it reads
+  the live `OrderBook` directly and never goes through `BookUpdateFactory`.
+
+**Benchmark (before/after, same JDK, single-threaded, shared `OrderService`,
+1,500,000 orders, 500 accounts, 750,000 resulting trades in every run — see
+`OPTIMIZATION_EVIDENCE.md` for full methodology, environment, and reproduction
+commands):**
+
+Two independent before/after measurement sessions (first with an ad hoc `/tmp` driver
+during initial diagnosis, second with the committed
+`com.finex.benchmarks.SustainedSharedServiceDriver`) both show a substantial,
+reproducible improvement:
+
+| Session | Before avg (ops/s) | After avg (ops/s) | Delta |
+|---------|--------------------:|--------------------:|------:|
+| Ad hoc driver (3 runs each) | 77,389.46 | 95,710.59 | +23.7% |
+| Committed driver (3 runs each) | 77,389.46 | 98,944.11 | +27.9% |
+
+**Delta:** approximately **+24% to +28% throughput** on the shared, no-subscriber
+end-to-end path, with normal run-to-run variance. Do not treat either single percentage
+as an exact, portable number — see `OPTIMIZATION_EVIDENCE.md` for the raw per-run data.
+
+**Allocation result:** `BigDecimal.valueOf` share of sampled allocations dropped from
+60.7% (3288/5420) to 14.8% (671/4520); `BookUpdateFactory` no longer appears anywhere in
+either the CPU or allocation samples after the change (`grep -c BookUpdateFactory` → 0
+in both).
+
+**Correctness result:** PASS.
+- Full `mvn test` across all 16 modules: all tests green (finex-api: 31/31 including the
+  new `OrderServiceMarketDataTest` and `MarketDataPublisherTest.hasSubscribersReflects...`).
+- Differential check: identical order/trade counts (1,500,000 orders → 750,000 trades)
+  before and after, on the same deterministic workload.
+- New regression tests added:
+  - `MarketDataPublisherTest.hasSubscribersReflectsCurrentListenerCount` — verifies the
+    new method toggles correctly on subscribe/unsubscribe.
+  - `OrderServiceMarketDataTest.publishesBookUpdatesAndTradeEventsWhenSubscribed` —
+    proves publishing is *unchanged* (same event counts/content) when a listener exists.
+  - `OrderServiceMarketDataTest.submitsAndMatchesCorrectlyWithNoSubscribers` — proves
+    matching/ledger/order-book state is identical when the fast path is taken.
+
+**Decision:** KEEP.
+
+**Files changed:**
+- `finex-market-data/src/main/java/com/finex/marketdata/MarketDataPublisher.java`
+- `finex-market-data/src/main/java/com/finex/marketdata/SimpleMarketDataPublisher.java`
+- `finex-market-data/src/test/java/com/finex/marketdata/MarketDataPublisherTest.java`
+- `finex-api/src/main/java/com/finex/api/order/OrderService.java`
+- `finex-api/src/test/java/com/finex/api/order/OrderServiceMarketDataTest.java` (new)
+
+**Next hotspot identified (not yet actioned):** With OPT-002 applied, the JFR CPU profile's
+new top `com.finex.*` frame is `com.finex.portfolio.Position.mark` (112 samples), called
+from `PortfolioService.markToMarket`, which revalues *every* position on *every* trade.
+This is legitimate financial work (unlike the discarded market-data snapshot), so it is a
+candidate for a future OPT-003 investigation (e.g. only marking the symbol's own positions,
+or batching), not a correctness concern.
+
+**Status:** COMPLETED / KEPT.

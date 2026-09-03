@@ -307,7 +307,7 @@ public class OrderService implements CommandHandler {
     }
 
     private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {
-        if (result.trades().isEmpty()) {
+        if (result.trades().isEmpty() || !publisher.hasSubscribers()) {
             return;
         }
         MatchingEngine engine = shard.matchingEngine(symbol);
@@ -345,6 +345,9 @@ public class OrderService implements CommandHandler {
     }
 
     private void publishBookUpdate(String symbol, EngineShard shard, Instant now) {
+        if (!publisher.hasSubscribers()) {
+            return;
+        }
         shard.orderBook(symbol).ifPresent(book -> {
             BookUpdate update = BookUpdateFactory.from(symbol, book, now);
             publisher.publish(update);

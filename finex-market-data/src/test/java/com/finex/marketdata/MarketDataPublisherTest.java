@@ -48,4 +48,17 @@ class MarketDataPublisherTest {
 
         assertThat(received).isEmpty();
     }
+
+    @Test
+    void hasSubscribersReflectsCurrentListenerCount() {
+        SimpleMarketDataPublisher publisher = new SimpleMarketDataPublisher();
+        assertThat(publisher.hasSubscribers()).isFalse();
+
+        MarketDataListener listener = event -> { };
+        publisher.subscribe(listener);
+        assertThat(publisher.hasSubscribers()).isTrue();
+
+        publisher.unsubscribe(listener);
+        assertThat(publisher.hasSubscribers()).isFalse();
+    }
 }
