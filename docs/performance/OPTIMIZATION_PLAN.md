@@ -157,4 +157,18 @@ Five interleaved 300k-order controlled repetitions measured 555,942 mean ops/s f
 allocations fell about 8% (151 to 139), but total allocation samples did not fall and Long boxing
 increased (67 to 93), identifying remaining reservation-map/boundary costs. Keep the selectable
 implementation; retain BigDecimal as default/reference. See `OPTIMIZATIONS.md` for raw evidence
-and limitations. Do not begin OPT-011 without a separate evidence-based authorization.
+and limitations.
+
+## OPT-011 — REJECTED / REVERTED
+
+Fresh profiling ranked: (1) `ConcurrentHashMap` put/resize CPU and boxed-map allocation,
+(2) remaining BigDecimal compatibility-boundary allocation, and (3) protocol/event byte-array
+encoding. The smallest experiment removed a duplicate incoming-order cache write. Five isolated,
+interleaved 1.5M-order repetitions measured +3.47% mean throughput, below the baseline's 10.4%
+run-to-run stdev, with paired results spanning −9.7% to +19.5% and no consistent latency gain.
+JFR confirmed `putVal` samples fell locally but did not establish end-to-end allocation/GC benefit.
+The change was reverted and is not claimed as an improvement.
+
+Next candidate, not started: investigate map growth/resize and boxed key/value data layout behind
+`ConcurrentHashMap.transfer`/`Long` allocation. Any experiment must preserve or explicitly isolate
+the concurrency contract and use the same differential/replay/invariant gates.

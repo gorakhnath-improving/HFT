@@ -2,14 +2,13 @@
 
 **Current phase:** Post-Phase-24 performance-engineering pass (evidence-driven optimization
 cycle). This is ongoing/iterative work, not a numbered master-plan phase.
-**Current task:** OPT-010 is complete and classified **VALIDATED IMPROVEMENT** for
-representable scale-4 workloads. BigDecimal remains the default/reference; fixed mode replaces
-risk-state and clearing arithmetic with checked primitive values while preserving external
-BigDecimal and event/wire semantics. True differential, both-mode replay, and both-mode invariants
-passed through 1,000,000 commands. Five interleaved A/B repetitions measured +9.2% mean
-throughput and improved median p50–p99.99; JFR BigDecimal samples fell 151→139 but total sampled
-allocation was unchanged and Long boxing increased. OPT-008 remains evidence-deprioritized.
-OPT-011 has not started and requires separate authorization/evidence.
+**Current task:** OPT-011 is **REJECTED / REVERTED — NO MEASURABLE IMPROVEMENT**. Fresh
+post-OPT-010 JFR ranked ConcurrentHashMap put/resize CPU first. Removing one redundant incoming
+order-cache write reduced the local `putVal` profile share, but a five-rep isolated interleaved A/B
+measured only +3.47% mean with paired deltas −9.7% to +19.5%, inside baseline variation and with
+no consistent latency/allocation gain. Production code was restored; only experiment evidence
+remains. OPT-010 remains validated and unchanged. Next candidate (not started): map growth/resize
+and boxed key/value data layout with explicit concurrency semantics.
 
 **Architecture (current):** Maven multi-module reactor.
 - `finex-common` — domain model
@@ -66,6 +65,8 @@ OPT-011 has not started and requires separate authorization/evidence.
 - OPT-010: added checked scale-4 `FixedPoint`, selectable fixed risk/clearing, exact
   BigDecimal-vs-fixed differential and both-mode replay/invariants. Passed all profiles at
   100k and BALANCED seed 7 at 1M. Controlled A/B: 555,942 vs 607,081 mean ops/s (+9.2%).
+- OPT-011: redundant order-cache write removal tested and reverted. +3.47% mean was inside
+  benchmark noise; local profile improvement did not produce measurable end-to-end benefit.
 
 **Important decisions:** See `DESIGN_DECISIONS.md` / ADRs.
 
@@ -88,8 +89,8 @@ OPT-011 has not started and requires separate authorization/evidence.
   browser; treat single-run numbers on it with caution and prefer multi-rep A/Bs.
 
 **Remaining backlog:** OPT-008 remains deprioritized because metrics are absent from hot
-profiles. OPT-011 (lock-free/single-writer sharding) remains unstarted; do not begin without
-separate evidence-based authorization.
+profiles. Next evidence-based candidate is a selectable map growth/boxed-data-layout experiment;
+do not begin it without separate authorization and an explicit concurrency contract.
 
 **New commands (OPT-009 stress harness):**
 ```bash

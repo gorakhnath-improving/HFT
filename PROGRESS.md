@@ -4,6 +4,24 @@ Reverse-chronological. One entry per session/significant milestone.
 
 ---
 
+## 2026-09-03 — Session 19: OPT-011 — Redundant order-cache write experiment
+
+**Baseline/profile:** Five 1.5M-order fixed-point runs averaged 792,525 ops/s. A 3M-order JFR
+ranked ConcurrentHashMap put/resize first (23.9% combined CPU), then BigDecimal allocation
+(24.1% pressure), then protocol/event byte arrays (10.1%). No monitor contention was recorded.
+
+**Experiment:** Removed the duplicate incoming-order cache write; targeted matching, replay,
+fixed-point, and differential stress tests passed. Isolated-build five-rep interleaved A/B measured
+baseline 784,735 mean ops/s versus candidate 811,992 (+3.47%), but baseline stdev was 10.4% and
+paired deltas ranged −9.7% to +19.5%. Latency was inconsistent. JFR confirmed the local putVal
+reduction but not an end-to-end allocation/GC gain.
+
+**Decision:** REJECTED / REVERTED — no measurable improvement. Only documentation remains.
+Next candidate is map growth/boxed data layout, not started. Full `mvn test` passed across all
+16 modules after reversion.
+
+---
+
 ## 2026-09-03 — Session 18: OPT-010 — Fixed-point risk and clearing numerics
 
 **Done:** Added a checked scale-4 `long` fixed-point primitive; selectable fixed-point risk

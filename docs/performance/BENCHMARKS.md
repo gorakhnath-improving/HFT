@@ -96,6 +96,14 @@ JFR allocation samples showed BigDecimal 151→139, Long 67→93, equal total al
 samples (660), and 8 young collections in each recording. See `OPTIMIZATIONS.md` OPT-010
 for correctness, scale/range, profiling caveats, and the full decision.
 
+**OPT-011 rejected experiment:** Removing a redundant incoming-order cache write was tested with
+five interleaved, isolated-build 1.5M-order fixed-point repetitions. Baseline was 784,735 mean
+ops/s (81,539 stdev); candidate was 811,992 (38,262 stdev), +3.47%. Paired deltas ranged from
+−9.7% to +19.5%, so the result is inside the baseline's 10.4% variation. JFR showed the targeted
+`ConcurrentHashMap.putVal` sample share fall from 12.5% to 3.15%, but no reliable total
+allocation, GC, or latency improvement. The code was reverted. See `EXPERIMENTS.md` and
+`OPTIMIZATIONS.md` OPT-011.
+
 ### Latest latency percentiles (post OPT-006)
 
 | p50 | p90 | p99 | p99.9 | p99.99 | max |

@@ -30,5 +30,9 @@
 - [ ] OPT-008: Investigate metrics offloading/batching — deprioritized; `MetricsService`
   does not appear in current top CPU/allocation frames. Revisit only if a future profile
   supports it.
-- [ ] OPT-011: Investigate lock-free or single-writer order book per symbol shard — last,
-  after single-threaded allocation work is exhausted.
+- [x] OPT-011: Remove redundant incoming-order cache write. Controlled A/B measured +3.47%
+  mean with paired results from −9.7% to +19.5%, inside baseline variation; no consistent
+  latency/allocation improvement. **REJECTED / REVERTED — NO MEASURABLE IMPROVEMENT.**
+- [ ] Next candidate: investigate `ConcurrentHashMap` growth/resize and boxed key/value data
+  layout using a separately selectable implementation that preserves explicit concurrency
+  semantics. Not started.

@@ -774,3 +774,35 @@ BigDecimal mode retained as default/reference. Do not claim support for arbitrar
 or that all engine numerics are fixed-point.
 
 **Status:** VALIDATED IMPROVEMENT.
+
+---
+
+## OPT-011 — Eliminate redundant order-cache write
+
+**Problem/evidence:** Post-OPT-010 JFR on 3M fixed-point orders showed
+`ConcurrentHashMap.putVal` (12.5%), resize transfer (6.4%), and `put` (4.9%) as the largest
+combined CPU cost. `OrderService` wrote the final incoming order directly and then again through
+`MatchResult.updatedOrders()`.
+
+**Hypothesis/change:** Remove the direct write, retaining the updated-orders loop as the only cache
+update path. This was the smallest low-risk experiment against the measured map hotspot.
+
+**Baseline:** Five 1.5M-order fixed-point runs before the experiment averaged 792,525 ops/s
+(median 799,107; stdev 20,690). A separate isolated-build interleaved A/B measured baseline
+784,735 mean / 780,105 median / 81,539 stdev.
+
+**Result:** Candidate measured 811,992 mean / 796,472 median / 38,262 stdev, a +3.47% mean
+delta. Paired deltas ranged from −9.7% to +19.5%; latency had no consistent improvement. The
+delta is below the baseline's 10.4% variation and is not measurable with confidence.
+Post-change JFR confirmed the local effect (`putVal` 12.5%→3.15%) but resize transfer remained
+7.09%, `Long.equals` appeared at 9.06%, and allocation attribution merely shifted. JFR GC pauses
+were 20 baseline versus 19 candidate, also not a meaningful difference.
+
+**Correctness:** Targeted matching, API replay/fixed-point, and full differential stress tests
+passed while the candidate was present. The code and temporary contract assertion were then
+reverted because performance acceptance criteria were not met.
+
+**Decision/status:** **REJECTED / REVERTED — NO MEASURABLE IMPROVEMENT.** Full raw methodology
+and results are recorded in `EXPERIMENTS.md`. Next candidate is a separately selectable map
+data-layout/capacity experiment targeting resize transfer and boxed key/value traffic; do not
+weaken concurrency semantics without explicit design and evidence.
