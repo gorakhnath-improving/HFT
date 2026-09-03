@@ -4,9 +4,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
 
 import com.finex.common.domain.Trade;
 import com.finex.common.domain.enums.Side;
@@ -17,9 +15,9 @@ public final class FixedPointAccountRiskState {
     private final long accountId;
     private long cash;
     private long position;
-    private final Map<Long, Long> reservedCashByOrder = new ConcurrentHashMap<>();
-    private final Map<Long, Long> reservedPositionByOrder = new ConcurrentHashMap<>();
-    private final Map<Long, Long> reservationPriceByOrder = new ConcurrentHashMap<>();
+    private final LongLongHashMap reservedCashByOrder = new LongLongHashMap();
+    private final LongLongHashMap reservedPositionByOrder = new LongLongHashMap();
+    private final LongLongHashMap reservationPriceByOrder = new LongLongHashMap();
     private long totalReservedCash;
     private long totalReservedPosition;
     private final Queue<Instant> orderTimestamps = new ArrayDeque<>();
@@ -82,13 +80,15 @@ public final class FixedPointAccountRiskState {
         long cashToReserve = side == Side.BUY
                 ? FixedPoint.multiplyExactRaw(reservationPrice, quantity)
                 : 0;
-        Long oldCash = reservedCashByOrder.put(orderId, cashToReserve);
-        Long oldPosition = reservedPositionByOrder.put(orderId, signedQuantity);
+        long oldCash = reservedCashByOrder.put(orderId, cashToReserve);
+        boolean hadCash = reservedCashByOrder.previousPresent();
+        long oldPosition = reservedPositionByOrder.put(orderId, signedQuantity);
+        boolean hadPosition = reservedPositionByOrder.previousPresent();
         reservationPriceByOrder.put(orderId, reservationPrice);
-        if (oldCash != null) {
+        if (hadCash) {
             totalReservedCash = Math.subtractExact(totalReservedCash, oldCash);
         }
-        if (oldPosition != null) {
+        if (hadPosition) {
             totalReservedPosition = Math.subtractExact(totalReservedPosition, oldPosition);
         }
         totalReservedCash = Math.addExact(totalReservedCash, cashToReserve);
@@ -96,13 +96,15 @@ public final class FixedPointAccountRiskState {
     }
 
     public void releaseOrder(long orderId) {
-        Long oldCash = reservedCashByOrder.remove(orderId);
-        Long oldPosition = reservedPositionByOrder.remove(orderId);
+        long oldCash = reservedCashByOrder.remove(orderId);
+        boolean hadCash = reservedCashByOrder.previousPresent();
+        long oldPosition = reservedPositionByOrder.remove(orderId);
+        boolean hadPosition = reservedPositionByOrder.previousPresent();
         reservationPriceByOrder.remove(orderId);
-        if (oldCash != null) {
+        if (hadCash) {
             totalReservedCash = Math.subtractExact(totalReservedCash, oldCash);
         }
-        if (oldPosition != null) {
+        if (hadPosition) {
             totalReservedPosition = Math.subtractExact(totalReservedPosition, oldPosition);
         }
     }
@@ -131,20 +133,24 @@ public final class FixedPointAccountRiskState {
     }
 
     private void updateCashReservation(long orderId, long remaining) {
-        Long previous = remaining == 0
+        long previous = remaining == 0
                 ? reservedCashByOrder.remove(orderId)
                 : reservedCashByOrder.put(orderId, remaining);
-        totalReservedCash = Math.subtractExact(totalReservedCash, previous == null ? 0 : previous);
+        if (reservedCashByOrder.previousPresent()) {
+            totalReservedCash = Math.subtractExact(totalReservedCash, previous);
+        }
         if (remaining != 0) {
             totalReservedCash = Math.addExact(totalReservedCash, remaining);
         }
     }
 
     private void updatePositionReservation(long orderId, long remaining) {
-        Long previous = remaining == 0
+        long previous = remaining == 0
                 ? reservedPositionByOrder.remove(orderId)
                 : reservedPositionByOrder.put(orderId, remaining);
-        totalReservedPosition = Math.subtractExact(totalReservedPosition, previous == null ? 0 : previous);
+        if (reservedPositionByOrder.previousPresent()) {
+            totalReservedPosition = Math.subtractExact(totalReservedPosition, previous);
+        }
         if (remaining != 0) {
             totalReservedPosition = Math.addExact(totalReservedPosition, remaining);
         }
