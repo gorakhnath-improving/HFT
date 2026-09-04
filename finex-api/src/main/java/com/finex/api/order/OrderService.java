@@ -1,0 +1,462 @@
+package com.finex.api.order;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.finex.api.metrics.MetricsService;
+import com.finex.clearing.ClearingService;
+import com.finex.clearing.FixedPointClearingService;
+import com.finex.common.domain.Order;
+import com.finex.common.domain.Trade;
+import com.finex.common.domain.enums.OrderStatus;
+import com.finex.common.domain.enums.OrderType;
+import com.finex.common.domain.enums.Side;
+import com.finex.common.numeric.FixedPoint;
+import com.finex.eventlog.CancelOrderCommand;
+import com.finex.eventlog.CommandHandler;
+import com.finex.eventlog.CommandSerializer;
+import com.finex.eventlog.Event;
+import com.finex.eventlog.EventStore;
+import com.finex.eventlog.InMemoryEventStore;
+import com.finex.eventlog.ReplayEngine;
+import com.finex.eventlog.SubmitOrderCommand;
+import com.finex.ledger.InMemoryLedger;
+import com.finex.ledger.Ledger;
+import com.finex.marketdata.BookUpdate;
+import com.finex.marketdata.BookUpdateFactory;
+import com.finex.marketdata.ExecutionEvent;
+import com.finex.marketdata.MarketDataPublisher;
+import com.finex.marketdata.SimpleMarketDataPublisher;
+import com.finex.marketdata.TradeEvent;
+import com.finex.matching.MatchResult;
+import com.finex.matching.MatchingEngine;
+import com.finex.orderbook.OrderBook;
+import com.finex.portfolio.Portfolio;
+import com.finex.portfolio.PortfolioService;
+import com.finex.risk.AccountRiskState;
+import com.finex.risk.FixedPointAccountRiskState;
+import com.finex.risk.FixedPointRiskEngine;
+import com.finex.risk.RiskConfig;
+import com.finex.risk.RiskEngine;
+import com.finex.risk.RiskResult;
+import com.finex.settlement.SettlementService;
+import com.finex.shard.EngineShard;
+import com.finex.shard.ShardCoordinator;
+
+/**
+ * Service that owns per-symbol {@link MatchingEngine} instances sharded by symbol and
+ * exposes the trading surface to the REST layer. Persistence of instruments/accounts is
+ * Phase 2/11+.
+ *
+ * <p>Phase 6 adds a baseline in-memory {@link RiskEngine} that validates every order before
+ * it reaches the matching engine and updates account cash/positions when trades occur.
+ *
+ * <p>Phase 7 adds a {@link MarketDataPublisher} that emits {@link TradeEvent},
+ * {@link ExecutionEvent}, and {@link BookUpdate} events on every book-changing action.
+ *
+ * <p>Phase 9 adds an append-only {@link EventStore} and makes the service replayable via
+ * {@link CommandHandler}.
+ *
+ * <p>Phase 10 adds symbol sharding via {@link ShardCoordinator} so independent symbols can
+ * be processed by independent {@link EngineShard}s.
+ *
+ * <p>Phase 11 adds a double-entry {@link Ledger} that posts balanced cash and asset entries
+ * for every trade.
+ *
+ * <p>Phase 12 adds a {@link PortfolioService} for positions and P&L.
+ *
+ * <p>Phase 13 adds {@link ClearingService} to compute net cash obligations and fees.
+ */
+@Service
+public class OrderService implements CommandHandler {
+
+    private static final BigDecimal DEFAULT_INITIAL_CASH = new BigDecimal("1000000");
+    private static final BigDecimal DEFAULT_INITIAL_POSITION = BigDecimal.ZERO;
+
+    private final ShardCoordinator coordinator;
+    private final Map<Long, Order> orderCache = new ConcurrentHashMap<>();
+    private final AtomicLong orderSequence = new AtomicLong(0);
+
+    private final NumericMode numericMode;
+    private final RiskEngine riskEngine;
+    private final FixedPointRiskEngine fixedPointRiskEngine;
+    private final Map<Long, AccountRiskState> riskStates = new ConcurrentHashMap<>();
+    private final Map<Long, FixedPointAccountRiskState> fixedPointRiskStates = new ConcurrentHashMap<>();
+    private final Map<String, BigDecimal> lastTradePrices = new ConcurrentHashMap<>();
+
+    private final MarketDataPublisher publisher = new SimpleMarketDataPublisher();
+    private final EventStore eventStore;
+    private final Ledger ledger = new InMemoryLedger();
+    private final PortfolioService portfolioService = new PortfolioService();
+    private final ClearingService clearingService;
+    private final SettlementService settlementService;
+    private MetricsService metricsService = new MetricsService();
+
+    public enum NumericMode {
+        BIG_DECIMAL,
+        FIXED_POINT
+    }
+
+    public OrderService() {
+        this(new InMemoryEventStore(), 1, NumericMode.BIG_DECIMAL);
+    }
+
+    public OrderService(EventStore eventStore) {
+        this(eventStore, 1, NumericMode.BIG_DECIMAL);
+    }
+
+    public OrderService(EventStore eventStore, int shardCount) {
+        this(eventStore, shardCount, NumericMode.BIG_DECIMAL);
+    }
+
+    public OrderService(NumericMode numericMode) {
+        this(new InMemoryEventStore(), 1, numericMode);
+    }
+
+    public OrderService(EventStore eventStore, int shardCount, NumericMode numericMode) {
+        if (eventStore == null) {
+            throw new IllegalArgumentException("eventStore must not be null");
+        }
+        if (numericMode == null) {
+            throw new IllegalArgumentException("numericMode must not be null");
+        }
+        this.eventStore = eventStore;
+        this.coordinator = new ShardCoordinator(shardCount);
+        this.numericMode = numericMode;
+        RiskConfig riskConfig = RiskConfig.defaults();
+        this.riskEngine = numericMode == NumericMode.BIG_DECIMAL ? new RiskEngine(riskConfig) : null;
+        this.fixedPointRiskEngine = numericMode == NumericMode.FIXED_POINT ? new FixedPointRiskEngine(riskConfig) : null;
+        this.clearingService = numericMode == NumericMode.FIXED_POINT
+                ? new FixedPointClearingService()
+                : new ClearingService();
+        this.settlementService = new SettlementService(clearingService, ledger, portfolioService);
+    }
+
+    @Autowired(required = false)
+    public void setMetricsService(MetricsService metricsService) {
+        this.metricsService = metricsService != null ? metricsService : new MetricsService();
+    }
+
+    public MatchResult submitOrder(OrderRequest request, Instant now) {
+        validateRequest(request);
+        if (numericMode == NumericMode.FIXED_POINT) {
+            validateFixedPointRequest(request);
+        }
+        SubmitOrderCommand command = new SubmitOrderCommand(
+                request.accountId(),
+                request.clientOrderId() == null ? ("cid-" + (orderSequence.get() + 1)) : request.clientOrderId(),
+                request.symbol(),
+                request.side(),
+                request.type(),
+                request.price(),
+                request.quantity());
+        eventStore.append(now, Event.SUBMIT_ORDER, CommandSerializer.toPayload(command));
+
+        long start = System.nanoTime();
+        try {
+            MatchResult result = processSubmitOrder(command, now);
+            metricsService.recordSubmitted(result.trades().size());
+            return result;
+        } catch (OrderRejectedException e) {
+            metricsService.recordRejected();
+            throw e;
+        } finally {
+            metricsService.recordLatency(Duration.ofNanos(System.nanoTime() - start));
+        }
+    }
+
+    @Override
+    public void submitOrder(SubmitOrderCommand command, Instant timestamp) {
+        try {
+            processSubmitOrder(command, timestamp);
+        } catch (OrderRejectedException e) {
+            // processSubmitOrder already recorded the rejected order in orderCache before
+            // throwing (see below), matching the behavior submitOrder(OrderRequest, Instant)
+            // exposes to live callers. ReplayEngine has no way to catch this checked-by-type
+            // exception itself (finex-event-log cannot depend on finex-api), so it must be
+            // swallowed here: without this, replaying any event log that contains an order
+            // the risk engine rejected would abort the entire replay after that event and
+            // silently drop every subsequent event. This was found by the OPT-009 randomized
+            // differential/replay stress harness (finex-benchmarks stress package).
+        }
+    }
+
+    private MatchResult processSubmitOrder(SubmitOrderCommand command, Instant now) {
+        EngineShard shard = coordinator.shardFor(command.symbol());
+        long orderId = orderSequence.incrementAndGet();
+        long sequence = orderSequence.incrementAndGet();
+
+        Order order = new Order(
+                orderId,
+                command.clientOrderId(),
+                command.accountId(),
+                command.symbol(),
+                command.side(),
+                command.type(),
+                command.price(),
+                command.quantity(),
+                command.quantity(),
+                sequence,
+                now,
+                OrderStatus.OPEN);
+
+        RiskResult riskResult = validateRisk(order, now, lastTradePrices.get(command.symbol()));
+        if (!riskResult.accepted()) {
+            Order rejected = order.rejected(now);
+            orderCache.put(orderId, rejected);
+            throw new OrderRejectedException(rejected, riskResult.reason());
+        }
+
+        MatchResult result = shard.placeOrder(order, now);
+        orderCache.put(orderId, result.order());
+        for (Map.Entry<Long, Order> entry : result.updatedOrders().entrySet()) {
+            orderCache.put(entry.getKey(), entry.getValue());
+        }
+        for (Trade trade : result.trades()) {
+            lastTradePrices.put(command.symbol(), trade.price());
+            applyTradeToRiskState(trade);
+            settlementService.settle(trade, command.side(), now, trade.price());
+        }
+        publishMatchEvents(command.symbol(), shard, result, now);
+        publishBookUpdate(command.symbol(), shard, now);
+        return result;
+    }
+
+    public Optional<OrderResponse> getOrder(long orderId) {
+        Order cached = orderCache.get(orderId);
+        if (cached != null) {
+            // The order may have been partially filled by later trades while resting.
+            // Check the live book first; if not there, use the cached final state.
+            for (EngineShard shard : coordinator.shards()) {
+                Optional<Order> live = shard.findOrder(orderId);
+                if (live.isPresent()) {
+                    return Optional.of(OrderResponse.from(orderId, live.get(), List.of(), true));
+                }
+            }
+            return Optional.of(OrderResponse.from(orderId, cached, List.of(), false));
+        }
+        return Optional.empty();
+    }
+
+    public boolean cancelOrder(long orderId, Instant now) {
+        for (EngineShard shard : coordinator.shards()) {
+            Optional<Order> live = shard.findOrder(orderId);
+            if (live.isPresent()) {
+                CancelOrderCommand command = new CancelOrderCommand(live.get().accountId(), orderId);
+                eventStore.append(now, Event.CANCEL_ORDER, CommandSerializer.toPayload(command));
+                boolean cancelled = doCancel(command, now);
+                if (cancelled) {
+                    metricsService.recordCancelled();
+                }
+                return cancelled;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void cancelOrder(CancelOrderCommand command, Instant timestamp) {
+        doCancel(command, timestamp);
+    }
+
+    private boolean doCancel(CancelOrderCommand command, Instant now) {
+        for (EngineShard shard : coordinator.shards()) {
+            Optional<Order> live = shard.findOrder(command.orderId());
+            if (live.isPresent()) {
+                if (live.get().accountId() != command.accountId()) {
+                    return false;
+                }
+                boolean cancelled = shard.cancelOrder(command.orderId(), now);
+                if (cancelled) {
+                    Order cancelledOrder = live.get().cancelled(now);
+                    orderCache.put(command.orderId(), cancelledOrder);
+                    releaseRiskReservation(cancelledOrder.accountId(), command.orderId());
+                    publishBookUpdate(cancelledOrder.symbol(), shard, now);
+                }
+                return cancelled;
+            }
+        }
+        return false;
+    }
+
+    public Optional<OrderBookView> getOrderBook(String symbol) {
+        EngineShard shard = coordinator.shardFor(symbol);
+        Optional<OrderBook> book = shard.orderBook(symbol);
+        return book.map(b -> OrderBookView.from(symbol, b.getBids(), b.getAsks()));
+    }
+
+    /**
+     * Exposes the market-data publisher so callers can subscribe to market events.
+     */
+    public MarketDataPublisher marketDataPublisher() {
+        return publisher;
+    }
+
+    /**
+     * Exposes the append-only event store.
+     */
+    public EventStore eventStore() {
+        return eventStore;
+    }
+
+    /**
+     * Exposes the double-entry ledger.
+     */
+    public Ledger ledger() {
+        return ledger;
+    }
+
+    /**
+     * Returns the portfolio for an account.
+     */
+    public Portfolio portfolio(long accountId) {
+        return portfolioService.portfolio(accountId);
+    }
+
+    /**
+     * Exposes the metrics service for tests and diagnostics.
+     */
+    public MetricsService metricsService() {
+        return metricsService;
+    }
+
+    /**
+     * Replays all events from the event store into this service.
+     */
+    public void replay() {
+        ReplayEngine.replay(eventStore, this);
+    }
+
+    private AccountRiskState riskState(long accountId) {
+        return riskStates.computeIfAbsent(accountId, id ->
+                new AccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION, riskEngine.config()));
+    }
+
+    private FixedPointAccountRiskState fixedPointRiskState(long accountId) {
+        return fixedPointRiskStates.computeIfAbsent(accountId, id ->
+                new FixedPointAccountRiskState(id, DEFAULT_INITIAL_CASH, DEFAULT_INITIAL_POSITION));
+    }
+
+    private RiskResult validateRisk(Order order, Instant now, BigDecimal lastTradePrice) {
+        if (numericMode == NumericMode.FIXED_POINT) {
+            return fixedPointRiskEngine.validate(order, fixedPointRiskState(order.accountId()), now, lastTradePrice);
+        }
+        return riskEngine.validate(order, riskState(order.accountId()), now, lastTradePrice);
+    }
+
+    private void releaseRiskReservation(long accountId, long orderId) {
+        if (numericMode == NumericMode.FIXED_POINT) {
+            FixedPointAccountRiskState state = fixedPointRiskStates.get(accountId);
+            if (state != null) {
+                fixedPointRiskEngine.onCancel(state, orderId);
+            }
+        } else {
+            AccountRiskState state = riskStates.get(accountId);
+            if (state != null) {
+                riskEngine.onCancel(state, orderId);
+            }
+        }
+    }
+
+    private void applyTradeToRiskState(Trade trade) {
+        if (numericMode == NumericMode.FIXED_POINT) {
+            fixedPointRiskEngine.onTrade(fixedPointRiskState(trade.buyerAccountId()),
+                    trade.buyOrderId(), trade, Side.BUY);
+            fixedPointRiskEngine.onTrade(fixedPointRiskState(trade.sellerAccountId()),
+                    trade.sellOrderId(), trade, Side.SELL);
+        } else {
+            riskEngine.onTrade(riskState(trade.buyerAccountId()), trade.buyOrderId(), trade, Side.BUY);
+            riskEngine.onTrade(riskState(trade.sellerAccountId()), trade.sellOrderId(), trade, Side.SELL);
+        }
+    }
+
+    private void publishMatchEvents(String symbol, EngineShard shard, MatchResult result, Instant now) {
+        if (result.trades().isEmpty() || !publisher.hasSubscribers()) {
+            return;
+        }
+        MatchingEngine engine = shard.matchingEngine(symbol);
+
+        Order finalIncoming = result.order();
+        for (Trade trade : result.trades()) {
+            publisher.publish(new TradeEvent(symbol, trade, now));
+
+            long buyOrderId = trade.buyOrderId();
+            long sellOrderId = trade.sellOrderId();
+            publisher.publish(new ExecutionEvent(
+                    buyOrderId,
+                    trade.buyerAccountId(),
+                    symbol,
+                    trade,
+                    orderStatusFor(engine, buyOrderId, finalIncoming),
+                    now));
+            publisher.publish(new ExecutionEvent(
+                    sellOrderId,
+                    trade.sellerAccountId(),
+                    symbol,
+                    trade,
+                    orderStatusFor(engine, sellOrderId, finalIncoming),
+                    now));
+        }
+    }
+
+    private OrderStatus orderStatusFor(MatchingEngine engine, long orderId, Order finalIncoming) {
+        if (orderId == finalIncoming.orderId()) {
+            return finalIncoming.status();
+        }
+        return engine.orderBook().findOrder(orderId)
+                .map(Order::status)
+                .orElse(OrderStatus.FILLED);
+    }
+
+    private void publishBookUpdate(String symbol, EngineShard shard, Instant now) {
+        if (!publisher.hasSubscribers()) {
+            return;
+        }
+        shard.orderBook(symbol).ifPresent(book -> {
+            BookUpdate update = BookUpdateFactory.from(symbol, book, now);
+            publisher.publish(update);
+        });
+    }
+
+    private static void validateFixedPointRequest(OrderRequest request) {
+        FixedPoint.toRawExact(request.quantity());
+        if (request.price() != null) {
+            FixedPoint.toRawExact(request.price());
+        }
+    }
+
+    private static void validateRequest(OrderRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request must not be null");
+        }
+        if (request.symbol() == null || request.symbol().isBlank()) {
+            throw new IllegalArgumentException("symbol must not be blank");
+        }
+        if (request.side() == null) {
+            throw new IllegalArgumentException("side must not be null");
+        }
+        if (request.type() == null) {
+            throw new IllegalArgumentException("type must not be null");
+        }
+        if (request.quantity() == null || request.quantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("quantity must be positive");
+        }
+        if (request.type() == OrderType.LIMIT) {
+            if (request.price() == null || request.price().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("LIMIT orders require a positive price");
+            }
+        }
+        if (request.type() == OrderType.MARKET && request.price() != null) {
+            throw new IllegalArgumentException("MARKET orders must not have a price");
+        }
+    }
+}
